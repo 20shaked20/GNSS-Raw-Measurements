@@ -22,6 +22,7 @@ LIGHTSPEED = 2.99792458e8
 GPS_EPOCH = datetime(1980, 1, 6, 0, 0, 0)
 
 def parse_arguments():
+    # TODO: simplify names
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
     parser.add_argument('--input_file', type=str, help='Input GNSS log file', required=True)
     parser.add_argument('--data_directory', type=str, help='Directory for ephemeris data', default=os.getcwd())
@@ -153,7 +154,6 @@ def calculate_satellite_position(ephemeris, transmit_time):
     return sv_position
 
 def main():
-    # GPS time, SatPRN (ID), Sat.X, Sat.Y, Sat.Z, Pseudo-Range, CN0, Doppler
     args = parse_arguments()
     # TODO: add cleanup of existing igs & nasa folders
     unparsed_measurements = read_data(args.input_file)
