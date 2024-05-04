@@ -1,4 +1,7 @@
+# TODO: Clean up imports
+
 import sys
+import traceback
 import os
 import csv
 import argparse
@@ -8,6 +11,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import navpy
 from gnssutils import EphemerisManager
+
+pd.options.mode.chained_assignment = None
+
+# TODO: logging?
 
 # Constants
 WEEKSEC = 604800
@@ -21,6 +28,7 @@ def parse_arguments():
     return parser.parse_args()
 
 def read_data(input_filepath):
+    # TODO: fix and remove all android related stuff
     measurements, android_fixes= [], []
     with open(input_filepath) as csvfile:
         reader = csv.reader(csvfile)
@@ -145,35 +153,57 @@ def calculate_satellite_position(ephemeris, transmit_time):
     return sv_position
 
 def main():
+    # GPS time, SatPRN (ID), Sat.X, Sat.Y, Sat.Z, Pseudo-Range, CN0, Doppler
     args = parse_arguments()
+    # TODO: add cleanup of existing igs & nasa folders
     unparsed_measurements = read_data(args.input_file)
     measurements = preprocess_measurements(unparsed_measurements)
-    print('='*50)
-    print(measurements)
-    print('='*50)
     manager = EphemerisManager(args.data_directory)
-    
-    #ecef_list = []
+        
+    csv_output = []
     for epoch in measurements['Epoch'].unique():
         one_epoch = measurements.loc[(measurements['Epoch'] == epoch) & (measurements['prSeconds'] < 0.1)] 
         one_epoch = one_epoch.drop_duplicates(subset='SvName').set_index('SvName')
         if len(one_epoch.index) > 4:
             timestamp = one_epoch.iloc[0]['UnixTime'].to_pydatetime(warn=False)
+            
+            # Calculating satellite positions (ECEF)
             sats = one_epoch.index.unique().tolist()
             ephemeris = manager.get_ephemeris(timestamp, sats)
             sv_position = calculate_satellite_position(ephemeris, one_epoch['tTxSeconds'])
-            print(sv_position)
-            print('='*50)
-            print(one_epoch[['UnixTime', 'tTxSeconds', 'GpsWeekNumber']])
-            print('='*50)
 
-            xs = sv_position[['x_k', 'y_k', 'z_k']].to_numpy() # Conversion?
-            pr = one_epoch['PrM'] + LIGHTSPEED * sv_position['delT_sv']
-            pr = pr.to_numpy()
+            # Apply satellite clock bias to correct the measured pseudorange values
+            # Ensure sv_position's index matches one_epoch's index
+            sv_position.index = sv_position.index.map(str)  # Ensuring index types match; adjust as needed
+            one_epoch = one_epoch.join(sv_position[['delT_sv']], how='left')
+            one_epoch['PrM_corrected'] = one_epoch['PrM'] + LIGHTSPEED * one_epoch['delT_sv']
 
+            # Doppler shift calculation
+            one_epoch['PseudorangeRateMetersPerSecond'] = pd.to_numeric(one_epoch['PseudorangeRateMetersPerSecond'])
+            one_epoch['CarrierFrequencyHz'] = pd.to_numeric(one_epoch['CarrierFrequencyHz'])
+            one_epoch['DopplerShiftHz'] = -(one_epoch['PseudorangeRateMetersPerSecond'] / LIGHTSPEED) * one_epoch['CarrierFrequencyHz']
+        
+            for sv in one_epoch.index:
+                csv_output.append({
+                    "GPS Time": timestamp.isoformat(),
+                    "SatPRN (ID)": sv,
+                    "Sat.X": sv_position.at[sv, 'x_k'] if sv in sv_position.index else np.nan,
+                    "Sat.Y": sv_position.at[sv, 'y_k'] if sv in sv_position.index else np.nan,
+                    "Sat.Z": sv_position.at[sv, 'z_k'] if sv in sv_position.index else np.nan,
+                    "Pseudo-Range": one_epoch.at[sv, 'PrM_corrected'],
+                    "CN0": one_epoch.at[sv, 'Cn0DbHz'],
+                    "Doppler": one_epoch.at[sv, 'DopplerShiftHz']
+                })
+                
             # TODO: Positioning algo goes here
             #x, b, dp = least_squares(xs, pr, x, b) 
             #ecef_list.append(x)
+            
+    csv_df = pd.DataFrame(csv_output)
+    csv_df.to_csv("gnss_measurements_output.csv", index=False)
 
-if __name__ == '__main__':
+try:
     main()
+except Exception as e:
+    print(f"An error occurred: {e}")
+    traceback.print_exc()  # This prints the stack trace to the standard error

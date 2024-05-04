@@ -1,0 +1,4 @@
+igs/
+nasa/
+*.csv
+__pycache__
