@@ -50,50 +50,38 @@ def read_data(input_filepath):
 def preprocess_measurements(measurements):
     # Format satellite IDs
     measurements.loc[measurements['Svid'].str.len() == 1, 'Svid'] = '0' + measurements['Svid']
-    measurements.loc[measurements['ConstellationType'] == '1', 'Constellation'] = 'G'
-    measurements.loc[measurements['ConstellationType'] == '3', 'Constellation'] = 'R'
+    measurements['Constellation'] = measurements['ConstellationType'].map({'1': 'G', '3': 'R'})
+
+    # Create SvName and filter GPS satellites only
     measurements['SvName'] = measurements['Constellation'] + measurements['Svid']
+    measurements = measurements[measurements['Constellation'] == 'G']
 
-    # Remove all non-GPS measurements
-    measurements = measurements.loc[measurements['Constellation'] == 'G']
+    # Convert columns to numeric representation and handle missing data robustly
+    numeric_cols = ['Cn0DbHz', 'TimeNanos', 'FullBiasNanos', 'ReceivedSvTimeNanos',
+                    'PseudorangeRateMetersPerSecond', 'ReceivedSvTimeUncertaintyNanos',
+                    'BiasNanos', 'TimeOffsetNanos']
+    for col in numeric_cols:
+        measurements[col] = pd.to_numeric(measurements[col], errors='coerce').fillna(0)
 
-    # Convert columns to numeric representation
-    measurements['Cn0DbHz'] = pd.to_numeric(measurements['Cn0DbHz'])
-    measurements['TimeNanos'] = pd.to_numeric(measurements['TimeNanos'])
-    measurements['FullBiasNanos'] = pd.to_numeric(measurements['FullBiasNanos'])
-    measurements['ReceivedSvTimeNanos']  = pd.to_numeric(measurements['ReceivedSvTimeNanos'])
-    measurements['PseudorangeRateMetersPerSecond'] = pd.to_numeric(measurements['PseudorangeRateMetersPerSecond'])
-    measurements['ReceivedSvTimeUncertaintyNanos'] = pd.to_numeric(measurements['ReceivedSvTimeUncertaintyNanos'])
-
-    # A few measurement values are not provided by all phones
-    # We'll check for them and initialize them with zeros if missing
-    if 'BiasNanos' in measurements.columns:
-        measurements['BiasNanos'] = pd.to_numeric(measurements['BiasNanos'])
-    else:
-        measurements['BiasNanos'] = 0
-    if 'TimeOffsetNanos' in measurements.columns:
-        measurements['TimeOffsetNanos'] = pd.to_numeric(measurements['TimeOffsetNanos'])
-    else:
-        measurements['TimeOffsetNanos'] = 0
-        
-    # TIMESTAMP GENERATION
+    # Generate GPS and Unix timestamps
     measurements['GpsTimeNanos'] = measurements['TimeNanos'] - (measurements['FullBiasNanos'] - measurements['BiasNanos'])
-    measurements['UnixTime'] = pd.to_datetime(measurements['GpsTimeNanos'], utc = True, origin=GPS_EPOCH)
-    measurements['UnixTime'] = measurements['UnixTime']
+    measurements['UnixTime'] = pd.to_datetime(measurements['GpsTimeNanos'], utc=True, origin=GPS_EPOCH)
 
-    # Split data into measurement epochs
+    # Identify epochs based on time gaps
     measurements['Epoch'] = 0
-    measurements.loc[measurements['UnixTime'] - measurements['UnixTime'].shift() > timedelta(milliseconds=200), 'Epoch'] = 1
+    time_diff = measurements['UnixTime'] - measurements['UnixTime'].shift()
+    measurements.loc[time_diff > timedelta(milliseconds=200), 'Epoch'] = 1
     measurements['Epoch'] = measurements['Epoch'].cumsum()
-    
-    measurements['tRxGnssNanos'] = measurements['TimeNanos'] + measurements['TimeOffsetNanos'] - (measurements['FullBiasNanos'].iloc[0] + measurements['BiasNanos'].iloc[0])
+
+    # Calculations related to GNSS Nanos, week number, seconds, pseudorange
+    measurements['tRxGnssNanos'] = measurements['TimeNanos'] + measurements['TimeOffsetNanos'] - \
+                                   (measurements['FullBiasNanos'].iloc[0] + measurements['BiasNanos'].iloc[0])
     measurements['GpsWeekNumber'] = np.floor(1e-9 * measurements['tRxGnssNanos'] / WEEKSEC)
-    measurements['tRxSeconds'] = 1e-9*measurements['tRxGnssNanos'] - WEEKSEC * measurements['GpsWeekNumber']
-    measurements['tTxSeconds'] = 1e-9*(measurements['ReceivedSvTimeNanos'] + measurements['TimeOffsetNanos'])
-    # Calculate pseudorange in seconds
+    measurements['tRxSeconds'] = 1e-9 * measurements['tRxGnssNanos'] - WEEKSEC * measurements['GpsWeekNumber']
+    measurements['tTxSeconds'] = 1e-9 * (measurements['ReceivedSvTimeNanos'] + measurements['TimeOffsetNanos'])
     measurements['prSeconds'] = measurements['tRxSeconds'] - measurements['tTxSeconds']
 
-    # Convert to meters
+    # Convert pseudorange from seconds to meters
     measurements['PrM'] = LIGHTSPEED * measurements['prSeconds']
     measurements['PrSigmaM'] = LIGHTSPEED * 1e-9 * measurements['ReceivedSvTimeUncertaintyNanos']
 
@@ -179,9 +167,13 @@ def main():
             one_epoch['PrM_corrected'] = one_epoch['PrM'] + LIGHTSPEED * one_epoch['delT_sv']
 
             # Doppler shift calculation
-            one_epoch['PseudorangeRateMetersPerSecond'] = pd.to_numeric(one_epoch['PseudorangeRateMetersPerSecond'])
-            one_epoch['CarrierFrequencyHz'] = pd.to_numeric(one_epoch['CarrierFrequencyHz'])
-            one_epoch['DopplerShiftHz'] = -(one_epoch['PseudorangeRateMetersPerSecond'] / LIGHTSPEED) * one_epoch['CarrierFrequencyHz']
+            doppler_calculated = False
+            try:
+                one_epoch['CarrierFrequencyHz'] = pd.to_numeric(one_epoch['CarrierFrequencyHz'])
+                one_epoch['DopplerShiftHz'] = -(one_epoch['PseudorangeRateMetersPerSecond'] / LIGHTSPEED) * one_epoch['CarrierFrequencyHz']
+                doppler_calculated = True
+            except Exception:
+                pass
         
             for sv in one_epoch.index:
                 csv_output.append({
@@ -192,8 +184,9 @@ def main():
                     "Sat.Z": sv_position.at[sv, 'z_k'] if sv in sv_position.index else np.nan,
                     "Pseudo-Range": one_epoch.at[sv, 'PrM_corrected'],
                     "CN0": one_epoch.at[sv, 'Cn0DbHz'],
-                    "Doppler": one_epoch.at[sv, 'DopplerShiftHz']
+                    "Doppler": one_epoch.at[sv, 'DopplerShiftHz'] if doppler_calculated else 'NaN'
                 })
+            
                 
             # TODO: Positioning algo goes here
             #x, b, dp = least_squares(xs, pr, x, b) 

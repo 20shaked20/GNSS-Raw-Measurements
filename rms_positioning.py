@@ -19,7 +19,11 @@ def positioning_function(x, sat_positions, observed_pseudoranges, weights):
     return weights * residuals
 
 def solve_position_and_compute_rms(sat_positions, pseudoranges, weights):
-    initial_guess = np.zeros(3)  # XYZ coordinates only
+    # Ensure all inputs are finite and reasonable
+    if not (np.all(np.isfinite(sat_positions)) and np.all(np.isfinite(pseudoranges))):
+        raise ValueError("Satellite positions and pseudoranges must be finite.")
+
+    initial_guess = np.mean(sat_positions, axis=0)  # A better initial guess than zeros
     res = least_squares(positioning_function, initial_guess, args=(sat_positions, pseudoranges, weights))
     rms = np.sqrt(np.mean((res.fun / weights) ** 2))
     return res.x, rms
@@ -38,9 +42,10 @@ def process_satellite_data(data):
         cn0 = group['CN0'].values
         doppler = group['Doppler'].values
         
-        # Weighing the SatPRN's using carrier-noise ratio and doppler measurement
-        weights = cn0 / np.abs(doppler)
-        weights /= weights.sum()
+        # Check if Doppler is NaN and adjust weights
+        # TODO: consider changing to 1 / (cn0 + 1e-6)**2 in case where doppler is nan
+        weights = np.where(np.isnan(doppler), 1 / (cn0 + 1e-6), cn0 / (np.abs(doppler) + 1e-6))
+        weights /= weights.sum()  # Normalize weights
         
         position, rms = solve_position_and_compute_rms(sat_positions, pseudoranges, weights)
         lla = lla_from_ecef(position)
