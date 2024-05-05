@@ -65,6 +65,7 @@ def process_satellite_data(data):
         })
     
     # Output to KML
+    # TODO: more meaningful file name
     kml.save("path.kml")
     
     return results
