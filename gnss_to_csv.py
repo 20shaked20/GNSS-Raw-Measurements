@@ -192,6 +192,7 @@ def main():
             #x, b, dp = least_squares(xs, pr, x, b) 
             #ecef_list.append(x)
             
+    # TODO: file name should be more similar to input file name
     csv_df = pd.DataFrame(csv_output)
     csv_df.to_csv("gnss_measurements_output.csv", index=False)
 

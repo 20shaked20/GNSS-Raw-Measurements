@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from scipy.optimize import least_squares
 import navpy
+import simplekml
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Process CSV log files for positioning.')
@@ -35,8 +36,10 @@ def lla_from_ecef(ecef_coords):
 def process_satellite_data(data):
     grouped = data.groupby('GPS Time')
     results = []
+    kml = simplekml.Kml()
     
     for gps_time, group in grouped:
+        gps_time_dt = pd.to_datetime(gps_time) # Only to be used in KML export
         sat_positions = group[['Sat.X', 'Sat.Y', 'Sat.Z']].values
         pseudoranges = group['Pseudo-Range'].values
         cn0 = group['CN0'].values
@@ -50,12 +53,19 @@ def process_satellite_data(data):
         position, rms = solve_position_and_compute_rms(sat_positions, pseudoranges, weights)
         lla = lla_from_ecef(position)
         
+        # Adding to KML
+        pnt = kml.newpoint(name=f"{gps_time}", coords=[(lla[1], lla[0], lla[2])])
+        pnt.timestamp.when = gps_time_dt.strftime("%Y-%m-%dT%H:%M:%SZ")  # formatting to KML timestamp
+        
         results.append({
             'GPS Time': gps_time,
             'Estimated Position ECEF': position,
             'Estimated Position LLA': lla,
             'RMS': rms
         })
+    
+    # Output to KML
+    kml.save("path.kml")
     
     return results
 
