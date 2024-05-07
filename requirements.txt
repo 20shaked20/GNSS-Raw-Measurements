@@ -1,0 +1,8 @@
+georinex==1.16.1
+matplotlib==3.8.2
+NavPy==1.0
+numpy==1.26.4
+pandas==2.2.2
+scipy==1.13.0
+unlzw3==0.2.2
+xarray==2024.3.0

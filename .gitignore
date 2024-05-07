@@ -1,0 +1,5 @@
+igs/
+nasa/
+*.csv
+*.kml
+__pycache__
