@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import argparse
 import traceback
 import pandas as pd
@@ -7,8 +9,7 @@ import navpy
 import simplekml
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='Process CSV log files for positioning.')
-    parser.add_argument('--file', type=str, help='Input CSV log file', required=True)
+    parser = argparse.ArgumentParser(description='Process CSV log files for positioning.')    
     return parser.parse_args()
 
 def read_gnss_data(filepath):
@@ -65,22 +66,47 @@ def process_satellite_data(data):
         })
     
     # Output to KML
-    # TODO: more meaningful file name
-    kml.save("path.kml")
+    kml.save("gnss_visualization.kml")
+    print("gnss_visualization.kml File Is Created! \n")
     
     return results
 
 def main():
-    args = parse_arguments()
-    data = read_gnss_data(args.file)
+    csv_file_name = "gnss_measurements_output.csv" #csv file
+    data = read_gnss_data(csv_file_name)
     results = process_satellite_data(data)
-    
+
+    print("Saving to RmsResults.txt... \n")
+
+    # Positioning Algorithm Results, saved to another txt file, for a clean cmd.
+    with open('RmsResults.txt', 'w') as f:
+        for result in results:
+            f.write(f"GPS Time: {result['GPS Time']}\n")
+            f.write(f"Estimated Position ECEF (X, Y, Z): {result['Estimated Position ECEF']}\n")
+            f.write(f"Estimated Position LLA (Lat, Lon, Alt): {result['Estimated Position LLA']}\n")
+            f.write(f"RMS: {result['RMS']}\n")
+            f.write("-" * 50 + "\n")
+
+    # Add to the csv the Lan,Lot,Alt + Pos.x Pos.y Pos.z
+    print("Generating the New CSV with added data... \n")
+
+    existing_data = pd.read_csv(csv_file_name)
+
+    # Add new columns to the existing DataFrame
     for result in results:
-        print(f"GPS Time: {result['GPS Time']}")
-        print(f"Estimated Position ECEF (X, Y, Z): {result['Estimated Position ECEF']}")
-        print(f"Estimated Position LLA (Lat, Lon, Alt): {result['Estimated Position LLA']}")
-        print(f"RMS: {result['RMS']}")
-        print("-" * 50)
+        result['Pos.X'] = result['Estimated Position ECEF'][0]
+        result['Pos.Y'] = result['Estimated Position ECEF'][1]
+        result['Pos.Z'] = result['Estimated Position ECEF'][2]
+        result['Lat'] = result['Estimated Position LLA'][0]
+        result['Lon'] = result['Estimated Position LLA'][1]
+        result['Alt'] = result['Estimated Position LLA'][2]
+
+    processed_data = pd.DataFrame(results)
+    # append the datas
+    combined_data = pd.concat([existing_data, processed_data], axis=1)
+    # save data
+    combined_data.to_csv(csv_file_name, index=False)
+
 
 try:
     main()
