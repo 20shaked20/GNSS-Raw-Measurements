@@ -3,3 +3,4 @@ nasa/
 *.csv
 *.kml
 __pycache__
+RmsResults.txt
