@@ -7,6 +7,9 @@ import numpy as np
 from scipy.optimize import least_squares
 import navpy
 import simplekml
+from datetime import datetime
+import csv
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Process CSV log files for positioning.')    
@@ -87,25 +90,38 @@ def main():
             f.write(f"RMS: {result['RMS']}\n")
             f.write("-" * 50 + "\n")
 
-    # Add to the csv the Lan,Lot,Alt + Pos.x Pos.y Pos.z
-    print("Generating the New CSV with added data... \n")
+    # Add to the CSV the Lat, Lon, Alt + Pos.x, Pos.y, Pos.z 
+    print("Adding additional data to the CSV... \n")
+    add_to_csv = {
+        'GPS Time': [],
+        'Pos.X': [],
+        'Pos.Y': [],
+        'Pos.Z': [],
+        'Lat': [],
+        'Lon': [],
+        'Alt': []
+    }
+    encountered_timestamps = set()
 
-    existing_data = pd.read_csv(csv_file_name)
-
-    # Add new columns to the existing DataFrame
     for result in results:
-        result['Pos.X'] = result['Estimated Position ECEF'][0]
-        result['Pos.Y'] = result['Estimated Position ECEF'][1]
-        result['Pos.Z'] = result['Estimated Position ECEF'][2]
-        result['Lat'] = result['Estimated Position LLA'][0]
-        result['Lon'] = result['Estimated Position LLA'][1]
-        result['Alt'] = result['Estimated Position LLA'][2]
+        gps_time = result['GPS Time']
+        if gps_time not in encountered_timestamps:
+            add_to_csv['GPS Time'].append(gps_time)
+            add_to_csv['Pos.X'].append(result['Estimated Position ECEF'][0])
+            add_to_csv['Pos.Y'].append(result['Estimated Position ECEF'][1])
+            add_to_csv['Pos.Z'].append(result['Estimated Position ECEF'][2])
+            add_to_csv['Lat'].append(result['Estimated Position LLA'][0])
+            add_to_csv['Lon'].append(result['Estimated Position LLA'][1])
+            add_to_csv['Alt'].append(result['Estimated Position LLA'][2])
+            encountered_timestamps.add(gps_time)
 
-    processed_data = pd.DataFrame(results)
-    # append the datas
-    combined_data = pd.concat([existing_data, processed_data], axis=1)
-    # save data
-    combined_data.to_csv(csv_file_name, index=False)
+    add_to_csv_df = pd.DataFrame(add_to_csv)
+
+    existing_data = pd.read_csv("gnss_measurements_output.csv")
+
+    combined_data = pd.concat([existing_data, add_to_csv_df], axis=1)
+
+    combined_data.to_csv("gnss_measurements_output.csv", index=False)
 
 
 try:
