@@ -1,18 +1,19 @@
 import traceback
 import subprocess
+import sys
 import os
 
 def run_gnss_to_csv():
     # Run gnss_to_csv.py
-    print("\nRunning gnss_to_csv... \n ")
+    print("\nParsing raw GNSS data into CSV... \n ")
     gnss_to_csv_script = "gnss_to_csv.py"
-    subprocess.run(["python3", gnss_to_csv_script])
+    subprocess.run([sys.executable, gnss_to_csv_script])
 
 def run_rms_positioning():
     # Run rms_positioning.py
-    print("\nRunning rms_positioning... \n")
+    print("\nCalculating position based on CSV data... \n")
     rms_positioning_script = "rms_positioning.py"
-    subprocess.run(["python3", rms_positioning_script])
+    subprocess.run([sys.executable, rms_positioning_script])
 
 def main():
     # Run gnss_to_csv first
