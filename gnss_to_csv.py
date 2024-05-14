@@ -1,4 +1,4 @@
-# TODO: Clean up imports
+#!/usr/bin/python
 
 import sys
 import traceback
@@ -22,11 +22,23 @@ LIGHTSPEED = 2.99792458e8
 GPS_EPOCH = datetime(1980, 1, 6, 0, 0, 0)
 
 def parse_arguments():
-    # TODO: simplify names
+    # Create ArgumentParser object
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
-    parser.add_argument('--input_file', type=str, help='Input GNSS log file', required=True)
+
+    # Add --data_directory argument
     parser.add_argument('--data_directory', type=str, help='Directory for ephemeris data', default=os.getcwd())
-    return parser.parse_args()
+
+    # Parse command line arguments
+    args = parser.parse_args()
+
+    # Get the input file name from the user
+    input_file = input("Enter the GNSS log file name: ")
+
+    # Set the input file name in the args object
+    args.input_file = input_file
+
+    # Return parsed arguments
+    return args
 
 def read_data(input_filepath):
     # TODO: fix and remove all android related stuff
@@ -140,12 +152,14 @@ def calculate_satellite_position(ephemeris, transmit_time):
     sv_position['y_k'] = x_k_prime*np.sin(Omega_k) + y_k_prime*np.cos(i_k)*np.cos(Omega_k)
     sv_position['z_k'] = y_k_prime*np.sin(i_k)
     return sv_position
+    
 
 def main():
     args = parse_arguments()
     # TODO: add cleanup of existing igs & nasa folders
     unparsed_measurements = read_data(args.input_file)
     measurements = preprocess_measurements(unparsed_measurements)
+    print(args.data_directory)
     manager = EphemerisManager(args.data_directory)
         
     csv_output = []

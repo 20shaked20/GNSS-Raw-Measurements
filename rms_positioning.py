@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import argparse
 import traceback
 import pandas as pd
@@ -5,10 +7,12 @@ import numpy as np
 from scipy.optimize import least_squares
 import navpy
 import simplekml
+from datetime import datetime
+import csv
+
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='Process CSV log files for positioning.')
-    parser.add_argument('--file', type=str, help='Input CSV log file', required=True)
+    parser = argparse.ArgumentParser(description='Process CSV log files for positioning.')    
     return parser.parse_args()
 
 def read_gnss_data(filepath):
@@ -65,22 +69,60 @@ def process_satellite_data(data):
         })
     
     # Output to KML
-    # TODO: more meaningful file name
-    kml.save("path.kml")
+    kml.save("gnss_visualization.kml")
+    print("gnss_visualization.kml File Is Created! \n")
     
     return results
 
 def main():
-    args = parse_arguments()
-    data = read_gnss_data(args.file)
+    csv_file_name = "gnss_measurements_output.csv" #csv file
+    data = read_gnss_data(csv_file_name)
     results = process_satellite_data(data)
-    
+
+    print("Saving to RmsResults.txt... \n")
+
+    # Positioning Algorithm Results, saved to another txt file, for a clean cmd.
+    with open('RmsResults.txt', 'w') as f:
+        for result in results:
+            f.write(f"GPS Time: {result['GPS Time']}\n")
+            f.write(f"Estimated Position ECEF (X, Y, Z): {result['Estimated Position ECEF']}\n")
+            f.write(f"Estimated Position LLA (Lat, Lon, Alt): {result['Estimated Position LLA']}\n")
+            f.write(f"RMS: {result['RMS']}\n")
+            f.write("-" * 50 + "\n")
+
+    # Add to the CSV the Lat, Lon, Alt + Pos.x, Pos.y, Pos.z 
+    print("Adding additional data to the CSV... \n")
+    add_to_csv = {
+        'GPS Time': [],
+        'Pos.X': [],
+        'Pos.Y': [],
+        'Pos.Z': [],
+        'Lat': [],
+        'Lon': [],
+        'Alt': []
+    }
+    encountered_timestamps = set()
+
     for result in results:
-        print(f"GPS Time: {result['GPS Time']}")
-        print(f"Estimated Position ECEF (X, Y, Z): {result['Estimated Position ECEF']}")
-        print(f"Estimated Position LLA (Lat, Lon, Alt): {result['Estimated Position LLA']}")
-        print(f"RMS: {result['RMS']}")
-        print("-" * 50)
+        gps_time = result['GPS Time']
+        if gps_time not in encountered_timestamps:
+            add_to_csv['GPS Time'].append(gps_time)
+            add_to_csv['Pos.X'].append(result['Estimated Position ECEF'][0])
+            add_to_csv['Pos.Y'].append(result['Estimated Position ECEF'][1])
+            add_to_csv['Pos.Z'].append(result['Estimated Position ECEF'][2])
+            add_to_csv['Lat'].append(result['Estimated Position LLA'][0])
+            add_to_csv['Lon'].append(result['Estimated Position LLA'][1])
+            add_to_csv['Alt'].append(result['Estimated Position LLA'][2])
+            encountered_timestamps.add(gps_time)
+
+    add_to_csv_df = pd.DataFrame(add_to_csv)
+
+    existing_data = pd.read_csv("gnss_measurements_output.csv")
+
+    combined_data = pd.concat([existing_data, add_to_csv_df], axis=1)
+
+    combined_data.to_csv("gnss_measurements_output.csv", index=False)
+
 
 try:
     main()
