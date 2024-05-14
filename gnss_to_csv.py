@@ -22,22 +22,18 @@ LIGHTSPEED = 2.99792458e8
 GPS_EPOCH = datetime(1980, 1, 6, 0, 0, 0)
 
 def parse_arguments():
-    # Create ArgumentParser object
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
 
-    # Add --data_directory argument
+    # add --data_directory argument
     parser.add_argument('--data_directory', type=str, help='Directory for ephemeris data', default=os.getcwd())
 
-    # Parse command line arguments
     args = parser.parse_args()
 
     # Get the input file name from the user
     input_file = input("Enter the GNSS log file name: ")
 
-    # Set the input file name in the args object
     args.input_file = input_file
 
-    # Return parsed arguments
     return args
 
 def read_data(input_filepath):
@@ -214,4 +210,4 @@ try:
     main()
 except Exception as e:
     print(f"An error occurred: {e}")
-    traceback.print_exc()  # This prints the stack trace to the standard error
+    traceback.print_exc() 

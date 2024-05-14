@@ -128,4 +128,4 @@ try:
     main()
 except Exception as e:
     print(f"An error occurred: {e}")
-    traceback.print_exc()  # Print the stack trace to standard error
+    traceback.print_exc() 
