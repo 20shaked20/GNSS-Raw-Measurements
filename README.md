@@ -1,36 +1,55 @@
 # GNSS-Raw-Measurements
-Ex0 in Autonomous Robotics course 
+This repository contains code for processing GNSS (Global Navigation Satellite System) raw measurements, developed as part of the Ex0 assignment in the Autonomous Robotics course.
 
 ## Created By:
 * [Shaked Levi](https://github.com/20shaked20)
 * [Dana Zorohov](https://github.com/danaZo)
 * [Yuval Bubnovsky](https://github.com/YuvalBubnovsky)
 
-## The Project:
+</br>
+
+## Overview
+The project consists of two main modules: </br></br>
+**1. gnss_to_csv:** This module focuses on parsing GNSS measurements from a CSV file and preprocessing them for further analysis. It includes functions for formatting satellite IDs, filtering GPS satellites, converting columns to numeric representations, calculating timestamps, identifying epochs, and more.
+
+**2. rms_positioning:** This module implements a positioning algorithm based on Root Mean Square (RMS) error minimization. It computes the receiver's position using observed and estimated pseudoranges, considering signal strength (CN0) or inverse Doppler shift for weighting. Additionally, it converts Earth-Centered Earth-Fixed (ECEF) coordinates to latitude, longitude, and altitude (LLA).
+</br>
+</br>
+
+## Modules and Functions
 
 - ```gnss_to_csv.py```:
-    - parse_arguments: handle command-line arguments for specifying the input file and data directory. (using the library argparse)
+    - parse_arguments: Handles command-line arguments for specifying the input file and data directory using the argparse library.
     - read_data: Reads GNSS measurements from a CSV file, distinguishing between 'Fix' and 'Raw' measurements.
-    - preprocess_measurements: Formats satellite IDs, filters GPS satellites, converts columns to numeric representations, generates GPS and Unix timestamps, identifies epochs based on time gaps, and calculates additional parameters related to GNSS measurements.
-    - calculate_satellite_position: Calculates the position of each satellite in Earth-Centered Earth-Fixed (ECEF) coordinates based on ephemeris data and transmit time.
-      - main: initializes an EphemerisManager object, iterates over epochs in the measurements, calculates satellite positions, corrects measured pseudorange values, calculates Doppler shifts, and stores the processed data in a CSV file named   gnss_measurements_output.csv". </br>
+    - preprocess_measurements: Preprocesses GNSS measurements, including formatting satellite IDs, filtering GPS satellites, converting columns to numeric representations, generating timestamps, identifying epochs, and calculating additional                                 parameters related to GNSS measurements.
+    - calculate_satellite_position: Calculates the position of each satellite in ECEF coordinates based on ephemeris data and transmit time.
+    - main: Initializes an EphemerisManager object, iterates over epochs in the measurements, calculates satellite positions, corrects measured pseudorange values, calculates Doppler shifts, and stores the processed data in a CSV file named         "gnss_measurements_output.csv". </br>
   </br>
 - ```rms_positioning.py```:
-  - parse_arguments: argument parser handles cmd args for specifying the input CSV log file.
-  - read_gnss_data: using pandas library to read csv file
-  - positioning_function: computes the residuals between observed and estimated pseudoranges, weighted by signal strength (CN0) or inverse of Doppler shift.
-  - solve_position_and_compute_rms:uses the least_squares optimization routine to estimate the receiver's position and compute the Root Mean Square (RMS) error.
-  - lla_from_ecef: using navpy library, converts Earth-Centered Earth-Fixed (ECEF) coordinates to latitude, longitude, and altitude (LLA)
-  - process_satellite_data: processes the GNSS data, grouping it by GPS time and computing the receiver's position and RMS error for each epoch.
-  - main: parses command-line arguments, reads the GNSS data, processes it, and prints the results, including GPS time, estimated position (ECEF and LLA), and RMS error.
+  - parse_arguments: Parses command-line arguments for specifying the input CSV log file.
+  - read_gnss_data: Reads GNSS data from a CSV file using the pandas library.
+  - positioning_function: Computes the residuals between observed and estimated pseudoranges, weighted by signal strength (CN0) or inverse of Doppler shift.
+  - solve_position_and_compute_rms: Uses the least_squares optimization routine to estimate the receiver's position and compute the RMS error.
+  - lla_from_ecef: Converts ECEF coordinates to LLA using the navpy library.
+  - process_satellite_data: Processes GNSS data, grouping it by GPS time and computing the receiver's position and RMS error for each epoch.
+  - main: Parses command-line arguments, reads the GNSS data, processes it, and prints the results, including GPS time, estimated position (ECEF and LLA), and RMS error.
 </br>
   
 - ```gnss_processing.py```:
   - This is a simple wrapping python program. </br>
   - it calls the gnss_to_csv.py and then exectues the rms_positioning.py according to the output was given by gnss_to_csv.py. </br>
- 
+</br>
+
+
+## Testing
+To test the program, utilize the log files located in the "data" folder. These files were specifically chosen for testing purposes.
+
+
+</br>
+
 ## How To Run
 * Clone repositoy
+* Navigate to the directory containing the cloned repository.
 * Make sure you have installed ``requirements.txt`` - write in terminal -> ``pip install -r requirements.txt`` </br>
 * Run the program ``gnss_processing.py``
 * it will ask to input a file location: </br>
