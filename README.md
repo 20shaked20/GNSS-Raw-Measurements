@@ -1,4 +1,4 @@
-# GNSS-Raw-Measurements
+# GNSS-Raw-Measurements :satellite:
 This repository contains code for processing GNSS (Global Navigation Satellite System) raw measurements, developed as part of the Ex0 assignment in the Autonomous Robotics course.
 
 ## Created By:
@@ -8,7 +8,7 @@ This repository contains code for processing GNSS (Global Navigation Satellite S
 
 </br>
 
-## Overview
+## Overview :pushpin:
 The project consists of two main modules: </br></br>
 **1. gnss_to_csv:** This module focuses on parsing GNSS measurements from a CSV file and preprocessing them for further analysis. It includes functions for formatting satellite IDs, filtering GPS satellites, converting columns to numeric representations, calculating timestamps, identifying epochs, and more.
 
@@ -16,7 +16,7 @@ The project consists of two main modules: </br></br>
 </br>
 </br>
 
-## Modules and Functions
+## Modules and Functions :desktop_computer:
 
 - ```gnss_to_csv.py```:
     - parse_arguments: Handles command-line arguments for specifying the input file and data directory using the argparse library.
@@ -41,13 +41,13 @@ The project consists of two main modules: </br></br>
 </br>
 
 
-## Testing
+## Testing :mag:
 To test the program, utilize the log files located in the "data" folder. These files were specifically chosen for testing purposes.
 
 
 </br>
 
-## How To Run
+## How To Run :joystick:
 * Clone repositoy
 * Navigate to the directory containing the cloned repository.
 * Make sure you have installed ``requirements.txt`` - write in terminal -> ``pip install -r requirements.txt`` </br>
@@ -64,17 +64,15 @@ To test the program, utilize the log files located in the "data" folder. These f
 </br>
 </br>
 
-Some notes - 
-- in case you want to run only rms_positioning.py or gnss_to_csv.py, you can do that,
-- just make sure to follow the instructions as below:
-  - first run gnss_to_csv.py, get the correct outputting csv (the name is important, as the rms_positoning using it to get the data), and then run the rms_positoning.
+> [!NOTE]
+> in case you want to run only rms_positioning.py or gnss_to_csv.py, you can do that, just make sure to follow the instructions: first run gnss_to_csv.py, get the correct outputting csv (the name is important, as the rms_positoning using it to get the data), and then run the rms_positoning.
 
 
-## Topic Overview - for the main assignment of the course
+## Topic Overview - for the main assignment of the course :flying_saucer:
 The project focuses on expanding an initial task to develop a robust navigation system based on raw Global Navigation Satellite System (GNSS) measurements. The primary goal is to calculate real-time positions using an efficient and accurate algorithm. This system will incorporate advanced functionalities such as satellite filtering by constellation and signal strength, identification of "false" satellites, and handling disruptions. The project will also implement a disturbance detection algorithm to manage and mitigate the effects of disruptions.
 </br>
 
-## Previous Works
+## Previous Works :artificial_satellite:
 Previous works in the field of GNSS-based navigation systems have laid the foundation for this project. Early GNSS systems primarily focused on providing basic positioning services using pseudorange measurements from satellites. Over time, the introduction of advanced algorithms, such as those leveraging least squares optimization, has improved the accuracy and reliability of GNSS positioning.
 </br>
 Several studies have explored methods for filtering satellites based on various criteria, including signal strength (Carrier-to-Noise density ratio, CN0) and constellation (e.g., GPS, GLONASS, Galileo). Techniques for identifying and mitigating the impact of multipath and "false" satellites have also been investigated, aiming to enhance the reliability of GNSS measurements in challenging environments.
@@ -84,7 +82,7 @@ Furthermore, the detection and handling of disruptions, such as those caused by 
 By building on these previous works, this project aims to create a comprehensive navigation system capable of real-time position calculation, effective satellite filtering, and robust handling of disruptions, providing a significant advancement in GNSS-based navigation technology.
 </br>
 
-## References
+## References :paperclip:
 1. **Advanced GNSS Algorithms for Real-Time Positioning** - A special issue of Remote Sensing focuses on GNSS advanced positioning algorithms and innovative applications. It covers topics related to precise point positioning (PPP), real-time kinematic (RTK) schemes, low-cost GNSS, and more. </br>
 - [Performance of Smartphone BDS-3/GPS/Galileo Multi-Frequency Ionosphere-Free Precise Code Positioning](https://www.mdpi.com/2072-4292/15/22/5371)   - Wang, R., Hu, C., Wang, Z., Yuan, F., & Wang, Y. (2023). Remote Sens., 15(22), 5371. School of Environmental and Spatial Informatics, China University of Mining and Technology, Xuzhou, China; School of Spatial Information and Geomatics Engineering, Anhui University of Science and Technology, Huainan, China; Qianxun Spatial Intelligence Inc., Shanghai, China. </br>
 - [Signal Occlusion-Resistant Satellite Selection for Global Navigation Applications Using Large-Scale LEO Constellations](https://www.mdpi.com/2072-4292/15/20/4978) - Guo, J., Wang, Y., & Sun, C. (2023). Remote Sens., 15(20), 4978. The School of Electronics and Information Engineering, Harbin Institute of Technology (Shenzhen), Shenzhen, China.</br>
