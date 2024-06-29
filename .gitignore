@@ -4,3 +4,4 @@ nasa/
 *.kml
 __pycache__
 RmsResults.txt
+rinex/

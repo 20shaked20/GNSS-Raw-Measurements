@@ -208,7 +208,7 @@ def process_file(file_path):
                 gps_time = gps_millis[epoch]
 
                 sats = one_epoch.index.unique().tolist()
-                rinex_data = RinexNav("C:/Users/shake/OneDrive/Desktop/VsCode/GNSS-Raw-Measurements/rinex/nav/BRDC00WRD_S_20241810000_01D_MN.rnx",sats)
+                rinex_data = RinexNav("./rinex/nav/BRDC00WRD_S_20241810000_01D_MN.rnx",sats)
                 rinex_nav_df = rinex_data.pandas_df()
 
                 sv_positions = calculate_satellite_position(rinex_nav_df, gps_time)
