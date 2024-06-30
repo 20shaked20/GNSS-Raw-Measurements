@@ -10,7 +10,6 @@ from gnss_lib_py.utils.ephemeris_downloader import load_ephemeris
 import re
 from gnss_lib_py.parsers.rinex_nav import RinexNav
 
-
 pd.options.mode.chained_assignment = None
 
 # Constants
@@ -20,11 +19,9 @@ GPS_EPOCH = datetime(1980, 1, 6, 0, 0, 0)
 MU = 3.986005e14  # Earth's universal gravitational parameter
 OMEGA_E_DOT = 7.2921151467e-5  # Earth's rotation rate
 
-
-"""""""""""""""""""""""""""""""""""""FETCH_DATA_USING_ADB"""""""""""""""""""""""""""""""""""""""""""
-
-import subprocess
-import os
+# Cache for satellite data
+satellite_cache = {}
+seen_satellites = set()
 
 def run_adb_command(command):
     result = subprocess.run(['adb'] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -73,8 +70,6 @@ def pull_file(file_to_pull):
     pull_command = ['shell', 'cat', file_to_pull]
     new_data = run_adb_command(pull_command)
     return new_data
-
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
@@ -177,19 +172,45 @@ def process_new_data(file_path, measurements, ephemeris_files, last_processed_ti
         measurements = pd.concat([measurements, new_measurements]).reset_index(drop=True)
         gps_millis = new_measurements['GpsTimeNanos'].values / 1e6  # Convert nanoseconds to milliseconds
 
-        rinex_nav = RinexNav(ephemeris_files, measurements['SvName'].unique().tolist())
-        rinex_nav_df = rinex_nav.pandas_df()
+        # Reindex epochs to be sequential starting from zero
+        new_measurements['Epoch'] = new_measurements['Epoch'].rank(method='dense').astype(int) - 1
 
+        # Identify new satellites
+        new_satellites = set(new_measurements['SvName'].unique()) - seen_satellites
+
+        # Only call RinexNav if there are new satellites
+        if new_satellites:
+            print(f"New satellites detected: {new_satellites}")
+            rinex_nav = RinexNav(ephemeris_files, list(new_satellites))
+            rinex_nav_df = rinex_nav.pandas_df()
+            if rinex_nav_df.empty: #case where we do not have the data for the sattelite (which might happen)
+                return
+            
+            # Update the cache
+            for sv in new_satellites:
+                satellite_cache[sv] = rinex_nav_df[rinex_nav_df['sv_id'] == int(re.search(r'\d+', sv).group())]
+            # Update seen satellites
+            seen_satellites.update(new_satellites)
+        else:
+            rinex_nav_df = pd.DataFrame()
+
+        # Combine cached satellite data with new data
+        cached_data = pd.concat(satellite_cache.values())
         csv_output = []
         for epoch in new_measurements['Epoch'].unique():
             one_epoch = new_measurements.loc[(new_measurements['Epoch'] == epoch)].drop_duplicates(subset='SvName').set_index('SvName')
             if len(one_epoch.index) > 4:
                 timestamp = one_epoch.iloc[0]['UnixTime'].to_pydatetime(warn=False)
+                
+                if epoch >= len(gps_millis):
+                    print(f"Epoch index {epoch} out of bounds for gps_millis with length {len(gps_millis)}.")
+                    continue
+
                 gps_time = gps_millis[epoch]
 
                 sats = one_epoch.index.unique().tolist()
 
-                sv_positions = calculate_satellite_position(rinex_nav_df, gps_time)
+                sv_positions = calculate_satellite_position(cached_data, gps_time)
 
                 for sv in one_epoch.index:
                     id = int(re.search(r'\d+', sv).group())
@@ -218,9 +239,7 @@ def process_new_data(file_path, measurements, ephemeris_files, last_processed_ti
         print(f"An error occurred while processing new data from {file_path}: {e}")
         traceback.print_exc()
         return last_processed_time
-    
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 import time
 
 def main():
