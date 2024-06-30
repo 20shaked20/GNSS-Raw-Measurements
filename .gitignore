@@ -7,3 +7,4 @@ RmsResults.txt
 rinex/
 *.txt
 *.log
+.vscode
