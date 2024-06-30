@@ -164,18 +164,21 @@ def calculate_satellite_position(rinex_nav, gps_time):
     result_df = pd.DataFrame(positions, columns=['sv_id', 'x_k', 'y_k', 'z_k'])
     return result_df
 
-def process_new_data(file_path, measurements, rinex_nav_df):
+def process_new_data(file_path, measurements, ephemeris_files, last_processed_time):
     try:
         unparsed_new_data = read_data(file_path)
         new_measurements = preprocess_measurements(unparsed_new_data)
-        new_measurements = new_measurements[new_measurements['UnixTime'] > measurements['UnixTime'].max()]
+        new_measurements = new_measurements[new_measurements['UnixTime'] > last_processed_time]
 
         if new_measurements.empty:
             print("No new data to process.")
-            return
+            return last_processed_time
 
         measurements = pd.concat([measurements, new_measurements]).reset_index(drop=True)
         gps_millis = new_measurements['GpsTimeNanos'].values / 1e6  # Convert nanoseconds to milliseconds
+
+        rinex_nav = RinexNav(ephemeris_files, measurements['SvName'].unique().tolist())
+        rinex_nav_df = rinex_nav.pandas_df()
 
         csv_output = []
         for epoch in new_measurements['Epoch'].unique():
@@ -187,7 +190,7 @@ def process_new_data(file_path, measurements, rinex_nav_df):
                 sats = one_epoch.index.unique().tolist()
 
                 sv_positions = calculate_satellite_position(rinex_nav_df, gps_time)
-                
+
                 for sv in one_epoch.index:
                     id = int(re.search(r'\d+', sv).group())
 
@@ -209,9 +212,13 @@ def process_new_data(file_path, measurements, rinex_nav_df):
             csv_df = pd.DataFrame(csv_output)
             csv_df.to_csv("gnss_measurements_output.csv", mode='a', header=False, index=False)
             print("CSV output updated successfully.")
+        
+        return new_measurements['UnixTime'].max()
     except Exception as e:
         print(f"An error occurred while processing new data from {file_path}: {e}")
         traceback.print_exc()
+        return last_processed_time
+    
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 import time
@@ -222,17 +229,18 @@ def main():
     delete_files_in_directory(directory_to_pull)
 
     last_checked_times = {}
+    last_processed_time = None
 
     # Wait for the initial file to be generated
     initial_file = None
     while not initial_file:
         files = get_files_in_directory(directory_to_pull)
-        time.sleep(5)
         if files:
+            time.sleep(5)
             initial_file = f'{directory_to_pull}/{files[0]}'
         else:
             print("Waiting for the initial file to be generated...")
-            time.sleep(2)  # Wait for 5 seconds before checking again
+            time.sleep(5)  # Wait for 5 seconds before checking again
 
     # Initial setup
     initial_data = pull_file(initial_file)
@@ -241,10 +249,10 @@ def main():
         file.write(initial_data)
 
     measurements = preprocess_measurements(read_data(destination_file))
-
-    gps_millis = measurements['GpsTimeNanos'].values / 1e6  # Convert nanoseconds to milliseconds
-    rinex_nav = RinexNav("./rinex/nav/BRDC00WRD_S_20241810000_01D_MN.rnx", measurements['SvName'].unique().tolist())
-    rinex_nav_df = rinex_nav.pandas_df()
+    last_processed_time = measurements['UnixTime'].max()
+    
+    gps_millis = measurements['GpsTimeNanos'].values / 1e6
+    ephemeris_files = load_ephemeris('rinex_nav', gps_millis.astype(np.int64), constellations=['gps'], download_directory=os.getcwd(), verbose=True)
 
     while True:
         try:
@@ -252,21 +260,21 @@ def main():
             for file in files:
                 file_to_pull = f'{directory_to_pull}/{file}'
                 destination_file = f'{destination}/{file}'
-                
+
                 stat_command = ['shell', 'stat', '-c', '%Y', file_to_pull]
                 modification_time = int(run_adb_command(stat_command).strip())
-                
+
                 if file not in last_checked_times or last_checked_times[file] != modification_time:
                     new_data = pull_file(file_to_pull)
-                    
+
                     existing_data = read_existing_file(destination_file)
                     new_content_to_append = new_data[len(existing_data):] if new_data.startswith(existing_data) else new_data
-                    
+
                     if new_content_to_append:
                         append_new_data(destination_file, new_content_to_append)
                         print(f"Appended new data to {destination_file}")
-                        process_new_data(destination_file, measurements, rinex_nav_df)
-                    
+                        last_processed_time = process_new_data(destination_file, measurements, ephemeris_files, last_processed_time)
+
                     last_checked_times[file] = modification_time
         except Exception as e:
             print(f"Error in main loop: {e}")
