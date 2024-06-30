@@ -1,22 +1,18 @@
-import cProfile
-from io import StringIO
-from multiprocessing import Queue, Process, cpu_count
+import subprocess
 import os
 import csv
 import argparse
-import pstats
-import timeit
 import traceback
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 from gnss_lib_py.utils.ephemeris_downloader import load_ephemeris
 from gnss_lib_py.parsers.rinex_nav import RinexNav
-import re
+from multiprocessing import Queue, Process
 import time
-from concurrent.futures import ProcessPoolExecutor
 import logging
-import subprocess
+import psutil
+import re
 
 # Set up logging
 def setup_logger(name):
@@ -41,8 +37,8 @@ pd.options.mode.chained_assignment = None
 WEEKSEC = 604800
 LIGHTSPEED = 2.99792458e8
 GPS_EPOCH = datetime(1980, 1, 6, 0, 0, 0)
-MU = 3.986005e14  # Earth's universal gravitational parameter
-OMEGA_E_DOT = 7.2921151467e-5  # Earth's rotation rate
+MU = 3.986005e14
+OMEGA_E_DOT = 7.2921151467e-5
 
 def run_adb_command(command):
     result = subprocess.run(['adb'] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -54,7 +50,6 @@ def get_files_in_directory(directory):
     list_command = ['shell', 'ls', directory]
     try:
         files = run_adb_command(list_command).splitlines()
-        files = [f for f in files if not f.endswith('/')]  # Filter out directories
         return files
     except Exception as e:
         print(f"Error getting files in directory: {e}")
@@ -88,6 +83,11 @@ def delete_files_in_directory(directory):
     except Exception as e:
         print(f"Error deleting files in directory: {e}")
 
+def pull_file(file_to_pull):
+    pull_command = ['shell', 'cat', file_to_pull]
+    new_data = run_adb_command(pull_command)
+    return new_data
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
     parser.add_argument('--data_directory', type=str, help='Directory for ephemeris data', default=os.getcwd())
@@ -117,7 +117,7 @@ def preprocess_measurements(measurements):
         '1': 'G',  # GPS
         '3': 'R',  # GLONASS
         '5': 'E',  # Galileo
-        '6': 'C',  #Beido
+        '6': 'C',  # Beidou
     }
     measurements['Constellation'] = measurements['ConstellationType'].map(constellation_map)
     measurements['SvName'] = measurements['Constellation'] + measurements['Svid']
@@ -201,7 +201,7 @@ def pull_data_process(directory_to_pull, destination, input_queue):
 
                 if file not in last_checked_times or last_checked_times[file] != modification_time:
                     try:
-                        new_data = run_adb_command(['shell', 'cat', file_to_pull])
+                        new_data = pull_file(file_to_pull)
                     except Exception as e:
                         logger.error(f"Failed to pull data from {file_to_pull}: {e}")
                         continue
@@ -221,8 +221,6 @@ def pull_data_process(directory_to_pull, destination, input_queue):
             logger.error(f"Error in pull_data_process: {e}", exc_info=True)
             time.sleep(5)
 
-
-
 def process_file(input_queue, output_queue, data_directory):
     logger = setup_logger("process_file")
     logger.info("Process file started")
@@ -239,23 +237,15 @@ def process_file(input_queue, output_queue, data_directory):
                 if file_path not in last_positions:
                     last_positions[file_path] = 0
 
-                start_time = timeit.default_timer()
                 with open(file_path, 'r') as file:
                     file.seek(last_positions[file_path])
                     new_data = file.read()
                     if new_data:
-                        read_data_start = timeit.default_timer()
                         unparsed_measurements = read_data(file_path)
-                        read_data_time = timeit.default_timer() - read_data_start
-
-                        preprocess_start = timeit.default_timer()
                         measurements = preprocess_measurements(unparsed_measurements)
-                        preprocess_time = timeit.default_timer() - preprocess_start
 
                         gps_millis = measurements['GpsTimeNanos'].values / 1e6
-                        load_ephemeris_start = timeit.default_timer()
                         ephemeris_files = load_ephemeris('rinex_nav', gps_millis.astype(np.int64), constellations=['gps'], download_directory=data_directory, verbose=True)
-                        load_ephemeris_time = timeit.default_timer() - load_ephemeris_start
 
                         csv_output = []
                         for epoch in measurements['Epoch'].unique():
@@ -268,9 +258,7 @@ def process_file(input_queue, output_queue, data_directory):
                                 rinex_data = RinexNav(ephemeris_files, sats)
                                 rinex_nav_df = rinex_data.pandas_df()
 
-                                calculate_satellite_position_start = timeit.default_timer()
                                 sv_positions = calculate_satellite_position(rinex_nav_df, gps_time)
-                                calculate_satellite_position_time = timeit.default_timer() - calculate_satellite_position_start
 
                                 for sv in one_epoch.index:
                                     id = int(re.search(r'\d+', sv).group())
@@ -294,13 +282,6 @@ def process_file(input_queue, output_queue, data_directory):
                         last_positions[file_path] = file.tell()
                         output_queue.put(csv_df)
 
-                total_time = timeit.default_timer() - start_time
-                logger.info(f"Total time for processing file: {total_time:.4f}s")
-                logger.info(f"Time for read_data: {read_data_time:.4f}s")
-                logger.info(f"Time for preprocess_measurements: {preprocess_time:.4f}s")
-                logger.info(f"Time for load_ephemeris: {load_ephemeris_time:.4f}s")
-                logger.info(f"Time for calculate_satellite_position: {calculate_satellite_position_time:.4f}s")
-
         except Exception as e:
             logger.error(f"An error occurred while processing {file_path}: {e}", exc_info=True)
             time.sleep(5)
@@ -323,8 +304,6 @@ def write_csv_task(output_queue):
         except Exception as e:
             logger.error("An error occurred in write_csv_task", exc_info=True)
             time.sleep(5)
-
-import psutil
 
 def set_affinity(process, core_id):
     p = psutil.Process(process.pid)
