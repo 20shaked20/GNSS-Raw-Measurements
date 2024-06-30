@@ -7,29 +7,10 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 from gnss_lib_py.utils.ephemeris_downloader import load_ephemeris
-from gnss_lib_py.parsers.rinex_nav import RinexNav
-from multiprocessing import Queue, Process
-import time
-import logging
-import psutil
 import re
-
-# Set up logging
-def setup_logger(name):
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(processName)s - %(levelname)s - %(message)s')
-    log_file = os.path.join(os.getcwd(), 'process_log.log')
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setFormatter(formatter)
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-
-    if not logger.handlers:
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
-
-    return logger
+from gnss_lib_py.parsers.rinex_nav import RinexNav
+from multiprocessing import Process, Queue, cpu_count
+import time
 
 pd.options.mode.chained_assignment = None
 
@@ -39,6 +20,10 @@ LIGHTSPEED = 2.99792458e8
 GPS_EPOCH = datetime(1980, 1, 6, 0, 0, 0)
 MU = 3.986005e14
 OMEGA_E_DOT = 7.2921151467e-5
+
+# Cache for satellite data
+satellite_cache = {}
+seen_satellites = set()
 
 def run_adb_command(command):
     result = subprocess.run(['adb'] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -176,173 +161,179 @@ def calculate_satellite_position(rinex_nav, gps_time):
     result_df = pd.DataFrame(positions, columns=['sv_id', 'x_k', 'y_k', 'z_k'])
     return result_df
 
-def pull_data_process(directory_to_pull, destination, input_queue):
-    logger = setup_logger("pull_data_process")
-    logger.info("Pull data process started")
-    delete_files_in_directory(directory_to_pull)
-    last_checked_times = {}
+def process_new_data(file_path, measurements, ephemeris_files, last_processed_time, output_queue):
+    try:
+        unparsed_new_data = read_data(file_path)
+        new_measurements = preprocess_measurements(unparsed_new_data)
+        new_measurements = new_measurements[new_measurements['UnixTime'] > last_processed_time]
 
+        if new_measurements.empty:
+            print("No new data to process.")
+            return last_processed_time
+
+        measurements = pd.concat([measurements, new_measurements]).reset_index(drop=True)
+        gps_millis = new_measurements['GpsTimeNanos'].values / 1e6
+
+        new_measurements['Epoch'] = new_measurements['Epoch'].rank(method='dense').astype(int) - 1
+
+        new_satellites = set(new_measurements['SvName'].unique()) - seen_satellites
+
+        if new_satellites:
+            print(f"New satellites detected: {new_satellites}")
+            rinex_nav = RinexNav(ephemeris_files, list(new_satellites))
+            rinex_nav_df = rinex_nav.pandas_df()
+            if rinex_nav_df.empty:
+                return
+            
+            for sv in new_satellites:
+                satellite_cache[sv] = rinex_nav_df[rinex_nav_df['sv_id'] == int(re.search(r'\d+', sv).group())]
+            seen_satellites.update(new_satellites)
+        else:
+            rinex_nav_df = pd.DataFrame()
+
+        cached_data = pd.concat(satellite_cache.values())
+        csv_output = []
+        for epoch in new_measurements['Epoch'].unique():
+            one_epoch = new_measurements.loc[(new_measurements['Epoch'] == epoch)].drop_duplicates(subset='SvName').set_index('SvName')
+            if len(one_epoch.index) > 4:
+                timestamp = one_epoch.iloc[0]['UnixTime'].to_pydatetime(warn=False)
+                
+                if epoch >= len(gps_millis):
+                    print(f"Epoch index {epoch} out of bounds for gps_millis with length {len(gps_millis)}.")
+                    continue
+
+                gps_time = gps_millis[epoch]
+
+                sats = one_epoch.index.unique().tolist()
+
+                sv_positions = calculate_satellite_position(cached_data, gps_time)
+
+                for sv in one_epoch.index:
+                    id = int(re.search(r'\d+', sv).group())
+
+                    if id in sv_positions['sv_id'].values:
+                        pos = sv_positions[sv_positions['sv_id'] == id].iloc[0]
+                        csv_output.append({
+                            "GPS Time": timestamp.isoformat(),
+                            "SatPRN (ID)": sv,
+                            "Constellation": sv[0],
+                            "Sat.X": pos['x_k'],
+                            "Sat.Y": pos['y_k'],
+                            "Sat.Z": pos['z_k'],
+                            "Pseudo-Range": one_epoch.at[sv, 'PrM'],
+                            "CN0": one_epoch.at[sv, 'Cn0DbHz'],
+                            "Doppler": one_epoch.at[sv, 'DopplerShiftHz'] if 'DopplerShiftHz' in one_epoch.columns else 'NaN'
+                        })
+
+        if csv_output:
+            output_queue.put(csv_output)
+            print("CSV output queued successfully.")
+        
+        return new_measurements['UnixTime'].max()
+    except Exception as e:
+        print(f"An error occurred while processing new data from {file_path}: {e}")
+        traceback.print_exc()
+        return last_processed_time
+
+def write_to_csv(output_queue):
+    while True:
+        try:
+            csv_output = output_queue.get()
+            if csv_output is None:
+                break
+            csv_df = pd.DataFrame(csv_output)
+            csv_df.to_csv("gnss_measurements_output.csv", mode='a', header=False, index=False)
+            print("CSV output written successfully.")
+        except Exception as e:
+            print(f"Error writing to CSV: {e}")
+
+def pull_files(directory_to_pull, destination, pull_queue, last_checked_times):
     while True:
         try:
             files = get_files_in_directory(directory_to_pull)
-            if not files:
-                time.sleep(2)
-                continue
-
             for file in files:
                 file_to_pull = f'{directory_to_pull}/{file}'
                 destination_file = f'{destination}/{file}'
 
-                try:
-                    modification_time = int(run_adb_command(['shell', 'stat', '-c', '%Y', file_to_pull]).strip())
-                except Exception as e:
-                    logger.error(f"Failed to get modification time for {file_to_pull}: {e}")
-                    continue
+                stat_command = ['shell', 'stat', '-c', '%Y', file_to_pull]
+                modification_time = int(run_adb_command(stat_command).strip())
 
                 if file not in last_checked_times or last_checked_times[file] != modification_time:
-                    try:
-                        new_data = pull_file(file_to_pull)
-                    except Exception as e:
-                        logger.error(f"Failed to pull data from {file_to_pull}: {e}")
-                        continue
+                    new_data = pull_file(file_to_pull)
 
                     existing_data = read_existing_file(destination_file)
                     new_content_to_append = new_data[len(existing_data):] if new_data.startswith(existing_data) else new_data
 
                     if new_content_to_append:
                         append_new_data(destination_file, new_content_to_append)
-                        logger.info(f"Appended new data to {destination_file}")
-                        input_queue.put(destination_file)
+                        print(f"Appended new data to {destination_file}")
+                        pull_queue.put(destination_file)
 
                     last_checked_times[file] = modification_time
-
-            time.sleep(2) 
+            time.sleep(1)
         except Exception as e:
-            logger.error(f"Error in pull_data_process: {e}", exc_info=True)
-            time.sleep(5)
+            print(f"Error in pull_files: {e}")
 
-def process_file(input_queue, output_queue, data_directory):
-    logger = setup_logger("process_file")
-    logger.info("Process file started")
-    last_positions = {}
-
+def process_files(pull_queue, output_queue, measurements, ephemeris_files, last_processed_time):
     while True:
         try:
-            if input_queue.empty():
-                time.sleep(1)
-                continue
-            else:
-                file_path = input_queue.get()
-                logger.info(f"Processing file: {file_path}")
-                if file_path not in last_positions:
-                    last_positions[file_path] = 0
-
-                with open(file_path, 'r') as file:
-                    file.seek(last_positions[file_path])
-                    new_data = file.read()
-                    if new_data:
-                        unparsed_measurements = read_data(file_path)
-                        measurements = preprocess_measurements(unparsed_measurements)
-
-                        gps_millis = measurements['GpsTimeNanos'].values / 1e6
-                        ephemeris_files = load_ephemeris('rinex_nav', gps_millis.astype(np.int64), constellations=['gps'], download_directory=data_directory, verbose=True)
-
-                        csv_output = []
-                        for epoch in measurements['Epoch'].unique():
-                            one_epoch = measurements.loc[(measurements['Epoch'] == epoch)].drop_duplicates(subset='SvName').set_index('SvName')
-                            if len(one_epoch.index) > 4:
-                                timestamp = one_epoch.iloc[0]['UnixTime'].to_pydatetime(warn=False)
-                                gps_time = gps_millis[epoch]
-
-                                sats = one_epoch.index.unique().tolist()
-                                rinex_data = RinexNav(ephemeris_files, sats)
-                                rinex_nav_df = rinex_data.pandas_df()
-
-                                sv_positions = calculate_satellite_position(rinex_nav_df, gps_time)
-
-                                for sv in one_epoch.index:
-                                    id = int(re.search(r'\d+', sv).group())
-                                    if id in sv_positions['sv_id'].values:
-                                        pos = sv_positions[sv_positions['sv_id'] == id].iloc[0]
-                                        csv_output.append({
-                                            "GPS Time": timestamp.isoformat(),
-                                            "SatPRN (ID)": sv,
-                                            "Constellation": sv[0],
-                                            "Sat.X": pos['x_k'],
-                                            "Sat.Y": pos['y_k'],
-                                            "Sat.Z": pos['z_k'],
-                                            "Pseudo-Range": one_epoch.at[sv, 'PrM'],
-                                            "CN0": one_epoch.at[sv, 'Cn0DbHz'],
-                                            "Doppler": one_epoch.at[sv, 'DopplerShiftHz'] if 'DopplerShiftHz' in one_epoch.columns else 'NaN'
-                                        })
-
-                        csv_df = pd.DataFrame(csv_output)
-                        logger.info(f"Processed {len(csv_output)} measurements from {file_path}")
-
-                        last_positions[file_path] = file.tell()
-                        output_queue.put(csv_df)
-
+            file_path = pull_queue.get()
+            if file_path is None:
+                break
+            last_processed_time = process_new_data(file_path, measurements, ephemeris_files, last_processed_time, output_queue)
         except Exception as e:
-            logger.error(f"An error occurred while processing {file_path}: {e}", exc_info=True)
-            time.sleep(5)
-
-def write_csv_task(output_queue):
-    logger = setup_logger("write_csv_task")
-    logger.info("Write CSV task started")
-
-    while True:
-        try:
-            if output_queue.empty():
-                time.sleep(1)
-            else:
-                logger.info("Checking output queue for DataFrame")
-                csv_df = output_queue.get()
-                logger.info(f"Received DataFrame with shape: {csv_df.shape}")
-                if not csv_df.empty:
-                    csv_df.to_csv("gnss_measurements_output.csv", mode='a', header=False, index=False)
-                    logger.info(f"Appended {csv_df.shape[0]} rows to gnss_measurements_output.csv")
-        except Exception as e:
-            logger.error("An error occurred in write_csv_task", exc_info=True)
-            time.sleep(5)
-
-def set_affinity(process, core_id):
-    p = psutil.Process(process.pid)
-    p.cpu_affinity([core_id])
+            print(f"Error in process_files: {e}")
 
 def main():
-    logger = setup_logger("main")
-
     directory_to_pull = '/storage/emulated/0/Android/data/com.android.gpstest/files/gnss_log/'
     destination = './'
-    args = parse_arguments()
+    delete_files_in_directory(directory_to_pull)
 
-    input_queue = Queue()
+    last_checked_times = {}
+    last_processed_time = None
+    initial_file = None
+
+    while not initial_file:
+        files = get_files_in_directory(directory_to_pull)
+        if files:
+            time.sleep(7)
+            initial_file = f'{directory_to_pull}/{files[0]}'
+        else:
+            print("Waiting for the initial file to be generated...")
+            time.sleep(5)
+
+    initial_data = pull_file(initial_file)
+    destination_file = f'{destination}/initial_gnss_log.txt'
+    with open(destination_file, 'w') as file:
+        file.write(initial_data)
+
+    measurements = preprocess_measurements(read_data(destination_file))
+    last_processed_time = measurements['UnixTime'].max()
+    
+    gps_millis = measurements['GpsTimeNanos'].values / 1e6
+    ephemeris_files = load_ephemeris('rinex_nav', gps_millis.astype(np.int64), constellations=['gps'], download_directory=os.getcwd(), verbose=True)
+
+    pull_queue = Queue()
     output_queue = Queue()
 
-    pull_process = Process(target=pull_data_process, args=(directory_to_pull, destination, input_queue))
-    process_process = Process(target=process_file, args=(input_queue, output_queue, args.data_directory))
-    write_process = Process(target=write_csv_task, args=(output_queue,))
+    pull_process = Process(target=pull_files, args=(directory_to_pull, destination, pull_queue, last_checked_times))
+    process_process = Process(target=process_files, args=(pull_queue, output_queue, measurements, ephemeris_files, last_processed_time))
+    write_process = Process(target=write_to_csv, args=(output_queue,))
 
     pull_process.start()
-    set_affinity(pull_process, 0)
-
     process_process.start()
-    set_affinity(process_process, 1)
-
     write_process.start()
-    set_affinity(write_process, 2)
 
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("Keyboard interrupt received, stopping processes.")
-        pull_process.terminate()
-        process_process.terminate()
-        write_process.terminate()
+    num_cores = cpu_count()
+    if num_cores >= 3:
+        os.sched_setaffinity(pull_process.pid, 0)
+        os.sched_setaffinity(process_process.pid, 1)
+        os.sched_setaffinity(write_process.pid, 2)
 
     pull_process.join()
+    pull_queue.put(None)
     process_process.join()
+    output_queue.put(None)
     write_process.join()
 
 if __name__ == '__main__':
