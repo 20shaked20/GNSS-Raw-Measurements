@@ -1,21 +1,12 @@
-#!/usr/bin/python
-
 import subprocess
 import os
 import csv
 import argparse
-import sys
 import traceback
-import time
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import navpy
 from gnss_lib_py.utils.ephemeris_downloader import load_ephemeris
-import gnss_lib_py.utils.time_conversions as tc
-from gnss_lib_py.navdata.navdata import NavData
-
 
 pd.options.mode.chained_assignment = None
 
@@ -27,7 +18,8 @@ MU = 3.986005e14  # Earth's universal gravitational parameter
 OMEGA_E_DOT = 7.2921151467e-5  # Earth's rotation rate
 
 
-"FETCH DATA USING ADB"
+"""""""""""""""""""""""""""""""""""""FETCH_DATA_USING_ADB"""""""""""""""""""""""""""""""""""""""""""
+
 def run_adb_command(command):
     result = subprocess.run(['adb'] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
@@ -36,17 +28,28 @@ def run_adb_command(command):
 
 def get_files_in_directory(directory):
     list_command = ['shell', 'ls', directory]
-    files = run_adb_command(list_command).splitlines()
-    return files
+    try:
+        files = run_adb_command(list_command).splitlines()
+        return files
+    except Exception as e:
+        print(f"Error getting files in directory: {e}")
+        return []
 
 def append_new_data(file_path, new_data):
-    with open(file_path, 'a') as file:
-        file.write(new_data)
+    try:
+        with open(file_path, 'a') as file:
+            file.write(new_data)
+    except Exception as e:
+        print(f"Error appending new data: {e}")
 
 def read_existing_file(file_path):
     if os.path.exists(file_path):
-        with open(file_path, 'r') as file:
-            return file.read()
+        try:
+            with open(file_path, 'r') as file:
+                return file.read()
+        except Exception as e:
+            print(f"Error reading existing file: {e}")
+            return ""
     return ""
 
 def delete_files_in_directory(directory):
@@ -58,27 +61,28 @@ def delete_files_in_directory(directory):
             run_adb_command(delete_command)
             print(f"Deleted {file_to_delete}")
     except Exception as e:
-        print(e)
+        print(f"Error deleting files in directory: {e}")
 
 def pull_and_append_files(directory_to_pull, destination):
     try:
         files = get_files_in_directory(directory_to_pull)
         for file in files:
             file_to_pull = f'{directory_to_pull}/{file}'
-            destination_file = f'{destination}{file}'
+            destination_file = f'{destination}/{file}'
             pull_command = ['shell', 'cat', file_to_pull]
             new_data = run_adb_command(pull_command)
+            
             existing_data = read_existing_file(destination_file)
-            if new_data.startswith(existing_data):
-                new_content_to_append = new_data[len(existing_data):]
-            else:
-                new_content_to_append = new_data
+            new_content_to_append = new_data[len(existing_data):] if new_data.startswith(existing_data) else new_data
+            
             if new_content_to_append:
                 append_new_data(destination_file, new_content_to_append)
                 print(f"Appended new data to {destination_file}")
                 process_file(destination_file)  # Process the new data
     except Exception as e:
-        print(e)
+        print(f"Error pulling and appending files: {e}")
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
@@ -236,14 +240,43 @@ def process_file(file_path):
     except Exception as e:
         print(f"An error occurred while processing {file_path}: {e}")
         traceback.print_exc()
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
 def main():
-    args = parse_arguments()
     directory_to_pull = '/storage/emulated/0/Android/data/com.android.gpstest/files/gnss_log/'
     destination = './'
-    delete_files_in_directory('/storage/emulated/0/Android/data/com.android.gpstest/files/gnss_log/')
+    delete_files_in_directory(directory_to_pull)
+
+    last_checked_times = {}
 
     while True:
-        pull_and_append_files(directory_to_pull, destination)
+        try:
+            files = get_files_in_directory(directory_to_pull)
+            for file in files:
+                file_to_pull = f'{directory_to_pull}/{file}'
+                destination_file = f'{destination}/{file}'
+                
+                # Check the modification time of the file
+                stat_command = ['shell', 'stat', '-c', '%Y', file_to_pull]
+                modification_time = int(run_adb_command(stat_command).strip())
+                
+                # Check if the file is new or modified
+                if file not in last_checked_times or last_checked_times[file] != modification_time:
+                    pull_command = ['shell', 'cat', file_to_pull]
+                    new_data = run_adb_command(pull_command)
+                    
+                    existing_data = read_existing_file(destination_file)
+                    new_content_to_append = new_data[len(existing_data):] if new_data.startswith(existing_data) else new_data
+                    
+                    if new_content_to_append:
+                        append_new_data(destination_file, new_content_to_append)
+                        print(f"Appended new data to {destination_file}")
+                        # process_file(destination_file)  # Process the new data
+                    
+                    last_checked_times[file] = modification_time
+        except Exception as e:
+            print(f"Error in main loop: {e}")
 
 
 if __name__ == '__main__':
