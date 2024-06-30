@@ -7,6 +7,9 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 from gnss_lib_py.utils.ephemeris_downloader import load_ephemeris
+import re
+from gnss_lib_py.parsers.rinex_nav import RinexNav
+
 
 pd.options.mode.chained_assignment = None
 
@@ -19,6 +22,9 @@ OMEGA_E_DOT = 7.2921151467e-5  # Earth's rotation rate
 
 
 """""""""""""""""""""""""""""""""""""FETCH_DATA_USING_ADB"""""""""""""""""""""""""""""""""""""""""""
+
+import subprocess
+import os
 
 def run_adb_command(command):
     result = subprocess.run(['adb'] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -63,24 +69,10 @@ def delete_files_in_directory(directory):
     except Exception as e:
         print(f"Error deleting files in directory: {e}")
 
-def pull_and_append_files(directory_to_pull, destination):
-    try:
-        files = get_files_in_directory(directory_to_pull)
-        for file in files:
-            file_to_pull = f'{directory_to_pull}/{file}'
-            destination_file = f'{destination}/{file}'
-            pull_command = ['shell', 'cat', file_to_pull]
-            new_data = run_adb_command(pull_command)
-            
-            existing_data = read_existing_file(destination_file)
-            new_content_to_append = new_data[len(existing_data):] if new_data.startswith(existing_data) else new_data
-            
-            if new_content_to_append:
-                append_new_data(destination_file, new_content_to_append)
-                print(f"Appended new data to {destination_file}")
-                process_file(destination_file)  # Process the new data
-    except Exception as e:
-        print(f"Error pulling and appending files: {e}")
+def pull_file(file_to_pull):
+    pull_command = ['shell', 'cat', file_to_pull]
+    new_data = run_adb_command(pull_command)
+    return new_data
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
@@ -113,7 +105,7 @@ def preprocess_measurements(measurements):
         '1': 'G',  # GPS
         '3': 'R',  # GLONASS
         '5': 'E',  # Galileo
-        '6': 'C',  #Beido
+        '6': 'C',  # Beidou
     }
     measurements['Constellation'] = measurements['ConstellationType'].map(constellation_map)
     measurements['SvName'] = measurements['Constellation'] + measurements['Svid']
@@ -138,7 +130,6 @@ def preprocess_measurements(measurements):
     measurements['PrM'] = LIGHTSPEED * measurements['prSeconds']
     measurements['PrSigmaM'] = LIGHTSPEED * 1e-9 * measurements['ReceivedSvTimeUncertaintyNanos']
     return measurements
-
 
 def calculate_satellite_position(rinex_nav, gps_time):
     positions = []
@@ -168,52 +159,32 @@ def calculate_satellite_position(rinex_nav, gps_time):
             zk = yk_prime * np.sin(ik)
             positions.append((eph['sv_id'], xk, yk, zk))
         except Exception as e:
-            # Handle the exception
-            pass
+            pass  # Handle the exception
     
     result_df = pd.DataFrame(positions, columns=['sv_id', 'x_k', 'y_k', 'z_k'])
     return result_df
 
-from gnss_lib_py.parsers.rinex_nav import RinexNav
-import re
-
-def process_file(file_path):
-    args = parse_arguments()
+def process_new_data(file_path, measurements, rinex_nav_df):
     try:
-        unparsed_measurements = read_data(file_path)
-        measurements = preprocess_measurements(unparsed_measurements)
-        # print(f"Data Directory: {args.data_directory}")
-        
+        unparsed_new_data = read_data(file_path)
+        new_measurements = preprocess_measurements(unparsed_new_data)
+        new_measurements = new_measurements[new_measurements['UnixTime'] > measurements['UnixTime'].max()]
 
-        ## TODO: fix this to get the data from the datacdenter, its having issues with C import
-        
-        gps_millis = measurements['GpsTimeNanos'].values / 1e6  # Convert nanoseconds to milliseconds
+        if new_measurements.empty:
+            print("No new data to process.")
+            return
 
-        # Check and print the min and max gps_millis to ensure they are after January 1, 2013
-        min_gps_millis = np.min(gps_millis)
-        max_gps_millis = np.max(gps_millis)
-        # print(f"Min gps_millis: {min_gps_millis}, Max gps_millis: {max_gps_millis}")
-
-        ephemeris_files = load_ephemeris('rinex_nav', gps_millis.astype(np.int64), constellations=['gps'], download_directory=args.data_directory, verbose=True)
-        # print(f"Ephemeris files loaded: {ephemeris_files}")
-        
-        # parser = RINEXParser("C:/Users/shake/OneDrive/Desktop/VsCode/GNSS-Raw-Measurements/rinex/nav/BRDC00WRD_S_20241810000_01D_MN.rnx")
-        # parser.parse()
-        # ephemeris = parser.get_data()
-        # print(f"Ephemeris data: {ephemeris}")  # Print the first few rows of ephemeris data
-
-        
+        measurements = pd.concat([measurements, new_measurements]).reset_index(drop=True)
+        gps_millis = new_measurements['GpsTimeNanos'].values / 1e6  # Convert nanoseconds to milliseconds
 
         csv_output = []
-        for epoch in measurements['Epoch'].unique():
-            one_epoch = measurements.loc[(measurements['Epoch'] == epoch)].drop_duplicates(subset='SvName').set_index('SvName')
+        for epoch in new_measurements['Epoch'].unique():
+            one_epoch = new_measurements.loc[(new_measurements['Epoch'] == epoch)].drop_duplicates(subset='SvName').set_index('SvName')
             if len(one_epoch.index) > 4:
                 timestamp = one_epoch.iloc[0]['UnixTime'].to_pydatetime(warn=False)
                 gps_time = gps_millis[epoch]
 
                 sats = one_epoch.index.unique().tolist()
-                rinex_data = RinexNav("./rinex/nav/BRDC00WRD_S_20241810000_01D_MN.rnx",sats)
-                rinex_nav_df = rinex_data.pandas_df()
 
                 sv_positions = calculate_satellite_position(rinex_nav_df, gps_time)
                 
@@ -234,14 +205,16 @@ def process_file(file_path):
                             "Doppler": one_epoch.at[sv, 'DopplerShiftHz'] if 'DopplerShiftHz' in one_epoch.columns else 'NaN'
                         })
 
-        csv_df = pd.DataFrame(csv_output)
-        csv_df.to_csv("gnss_measurements_output.csv", index=False)
-        print("CSV output generated successfully.")
+        if csv_output:
+            csv_df = pd.DataFrame(csv_output)
+            csv_df.to_csv("gnss_measurements_output.csv", mode='a', header=False, index=False)
+            print("CSV output updated successfully.")
     except Exception as e:
-        print(f"An error occurred while processing {file_path}: {e}")
+        print(f"An error occurred while processing new data from {file_path}: {e}")
         traceback.print_exc()
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+import time
 
 def main():
     directory_to_pull = '/storage/emulated/0/Android/data/com.android.gpstest/files/gnss_log/'
@@ -250,6 +223,29 @@ def main():
 
     last_checked_times = {}
 
+    # Wait for the initial file to be generated
+    initial_file = None
+    while not initial_file:
+        files = get_files_in_directory(directory_to_pull)
+        time.sleep(5)
+        if files:
+            initial_file = f'{directory_to_pull}/{files[0]}'
+        else:
+            print("Waiting for the initial file to be generated...")
+            time.sleep(2)  # Wait for 5 seconds before checking again
+
+    # Initial setup
+    initial_data = pull_file(initial_file)
+    destination_file = f'{destination}/initial_gnss_log.txt'
+    with open(destination_file, 'w') as file:
+        file.write(initial_data)
+
+    measurements = preprocess_measurements(read_data(destination_file))
+
+    gps_millis = measurements['GpsTimeNanos'].values / 1e6  # Convert nanoseconds to milliseconds
+    rinex_nav = RinexNav("./rinex/nav/BRDC00WRD_S_20241810000_01D_MN.rnx", measurements['SvName'].unique().tolist())
+    rinex_nav_df = rinex_nav.pandas_df()
+
     while True:
         try:
             files = get_files_in_directory(directory_to_pull)
@@ -257,14 +253,11 @@ def main():
                 file_to_pull = f'{directory_to_pull}/{file}'
                 destination_file = f'{destination}/{file}'
                 
-                # Check the modification time of the file
                 stat_command = ['shell', 'stat', '-c', '%Y', file_to_pull]
                 modification_time = int(run_adb_command(stat_command).strip())
                 
-                # Check if the file is new or modified
                 if file not in last_checked_times or last_checked_times[file] != modification_time:
-                    pull_command = ['shell', 'cat', file_to_pull]
-                    new_data = run_adb_command(pull_command)
+                    new_data = pull_file(file_to_pull)
                     
                     existing_data = read_existing_file(destination_file)
                     new_content_to_append = new_data[len(existing_data):] if new_data.startswith(existing_data) else new_data
@@ -272,12 +265,11 @@ def main():
                     if new_content_to_append:
                         append_new_data(destination_file, new_content_to_append)
                         print(f"Appended new data to {destination_file}")
-                        # process_file(destination_file)  # Process the new data
+                        process_new_data(destination_file, measurements, rinex_nav_df)
                     
                     last_checked_times[file] = modification_time
         except Exception as e:
             print(f"Error in main loop: {e}")
-
 
 if __name__ == '__main__':
     try:
