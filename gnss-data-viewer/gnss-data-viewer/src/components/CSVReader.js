@@ -3,9 +3,12 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useTable } from 'react-table';
 import Papa from 'papaparse';
+import Select from 'react-select';
 
 const CSVReaderComponent = () => {
   const [data, setData] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
+  const [selectedConstellations, setSelectedConstellations] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -29,6 +32,7 @@ const CSVReaderComponent = () => {
         });
         console.log('Cleaned Data:', cleanedData);  // Debugging log
         setData(cleanedData);
+        setFilteredData(cleanedData);
       } catch (error) {
         console.error('Error fetching the CSV file:', error);
       }
@@ -40,25 +44,53 @@ const CSVReaderComponent = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    if (selectedConstellations.length > 0) {
+      const filtered = data.filter(row => selectedConstellations.includes(row['Constellation']));
+      setFilteredData(filtered);
+    } else {
+      setFilteredData(data);
+    }
+  }, [selectedConstellations, data]);
+
+  const handleFilterChange = (selectedOptions) => {
+    const constellations = selectedOptions ? selectedOptions.map(option => option.value) : [];
+    setSelectedConstellations(constellations);
+  };
+
   const columns = React.useMemo(() => {
-    if (data.length > 0) {
-      console.log('Columns:', Object.keys(data[0]));  // Debugging log
-      return Object.keys(data[0]).map((key) => ({
+    if (filteredData.length > 0) {
+      console.log('Columns:', Object.keys(filteredData[0]));  // Debugging log
+      return Object.keys(filteredData[0]).map((key) => ({
         Header: key,
         accessor: key,
       }));
     }
     return [];
-  }, [data]);
+  }, [filteredData]);
 
-  const tableInstance = useTable({ columns, data });
+  const tableInstance = useTable({ columns, data: filteredData });
 
   const { getTableProps, getTableBodyProps, headerGroups, rows, prepareRow } = tableInstance;
+
+  const constellationOptions = [
+    { value: 'G', label: 'GPS' },
+    { value: 'R', label: 'GLONASS' },
+    { value: 'E', label: 'Galileo' },
+    { value: 'C', label: 'Beidou' },
+    // Add other constellations as needed
+  ];
 
   return (
     <div>
       <h1>GNSS Data Viewer</h1>
-      {data.length > 0 ? (
+      <Select
+        isMulti
+        options={constellationOptions}
+        onChange={handleFilterChange}
+        placeholder="Select constellations to filter"
+      />
+      {filteredData.length > 0 ? (
         <table {...getTableProps()} style={{ border: 'solid 1px black', margin: '20px auto', borderCollapse: 'collapse' }}>
           <thead>
             {headerGroups.map(headerGroup => (
