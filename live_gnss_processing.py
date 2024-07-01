@@ -183,7 +183,7 @@ def process_new_data(file_path, measurements, ephemeris_files, last_processed_ti
             print(f"New satellites detected: {new_satellites}")
             rinex_nav = RinexNav(ephemeris_files, list(new_satellites))
             rinex_nav_df = rinex_nav.pandas_df()
-            if rinex_nav_df.empty: #case where we do not have the data for the sattelite (which might happen)
+            if rinex_nav_df.empty:  # case where we do not have the data for the satellite (which might happen)
                 return
             
             # Update the cache
@@ -221,9 +221,9 @@ def process_new_data(file_path, measurements, ephemeris_files, last_processed_ti
                             "GPS Time": timestamp.isoformat(),
                             "SatPRN (ID)": sv,
                             "Constellation": sv[0],
-                            "Sat.X": pos['x_k'],
-                            "Sat.Y": pos['y_k'],
-                            "Sat.Z": pos['z_k'],
+                            "SatX": pos['x_k'],
+                            "SatY": pos['y_k'],
+                            "SatZ": pos['z_k'],
                             "Pseudo-Range": one_epoch.at[sv, 'PrM'],
                             "CN0": one_epoch.at[sv, 'Cn0DbHz'],
                             "Doppler": one_epoch.at[sv, 'DopplerShiftHz'] if 'DopplerShiftHz' in one_epoch.columns else 'NaN'
@@ -231,7 +231,11 @@ def process_new_data(file_path, measurements, ephemeris_files, last_processed_ti
 
         if csv_output:
             csv_df = pd.DataFrame(csv_output)
-            csv_df.to_csv("gnss_measurements_output.csv", mode='a', header=False, index=False)
+            csv_file_path = "gnss_measurements_output.csv"
+            if not os.path.isfile(csv_file_path):
+                csv_df.to_csv(csv_file_path, mode='w', header=True, index=False)
+            else:
+                csv_df.to_csv(csv_file_path, mode='a', header=False, index=False)
             print("CSV output updated successfully.")
         
         return new_measurements['UnixTime'].max()
@@ -239,6 +243,7 @@ def process_new_data(file_path, measurements, ephemeris_files, last_processed_ti
         print(f"An error occurred while processing new data from {file_path}: {e}")
         traceback.print_exc()
         return last_processed_time
+
 
 import time
 
