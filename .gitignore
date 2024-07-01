@@ -26,3 +26,8 @@ rinex/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+gnss-data-viewer/package-lock.json
+gnssutils/__pycache__/__init__.cpython-311.pyc
+gnssutils/__pycache__/ephemeris_manager.cpython-311.pyc
+gnssutils/__pycache__/__init__.cpython-311.pyc
+gnssutils/__pycache__/ephemeris_manager.cpython-311.pyc
