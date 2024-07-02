@@ -44,7 +44,7 @@ def process_satellite_data(data):
     
     for gps_time, group in grouped:
         gps_time_dt = pd.to_datetime(gps_time) # Only to be used in KML export
-        sat_positions = group[['Sat.X', 'Sat.Y', 'Sat.Z']].values
+        sat_positions = group[['SatX', 'SatY', 'SatZ']].values
         pseudoranges = group['Pseudo-Range'].values
         cn0 = group['CN0'].values
         doppler = group['Doppler'].values

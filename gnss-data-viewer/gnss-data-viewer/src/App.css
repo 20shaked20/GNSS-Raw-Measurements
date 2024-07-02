@@ -1,0 +1,16 @@
+/* src/App.css */
+.App {
+  font-family: sans-serif;
+  text-align: center;
+}
+
+table {
+  margin: 20px auto;
+  border-collapse: collapse;
+}
+
+th, td {
+  border: 1px solid black;
+  padding: 8px;
+  text-align: left;
+}
