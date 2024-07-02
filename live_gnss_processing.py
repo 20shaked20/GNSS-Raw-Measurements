@@ -248,6 +248,10 @@ def process_new_data(file_path, measurements, ephemeris_files, last_processed_ti
 import time
 
 def main():
+    old_csv_file = "gnss_measurements_output.csv"
+    if os.path.exists(old_csv_file):
+        os.remove(old_csv_file)
+    
     directory_to_pull = '/storage/emulated/0/Android/data/com.android.gpstest/files/gnss_log/'
     destination = './'
     delete_files_in_directory(directory_to_pull)

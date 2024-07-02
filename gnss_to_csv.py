@@ -188,6 +188,10 @@ def process_new_data(file_path):
     
     
 def main():
+    old_csv_file = "gnss_measurements_output.csv"
+    if os.path.exists(old_csv_file):
+        os.remove(old_csv_file)
+        
     args = parse_arguments()
     file_path = args.input_file
     print(file_path)
