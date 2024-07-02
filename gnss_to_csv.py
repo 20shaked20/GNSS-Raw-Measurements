@@ -1,16 +1,10 @@
-#!/usr/bin/python
-
-import sys
 import traceback
 import os
 import csv
 import argparse
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import navpy
-from gnssutils import EphemerisManager
 from gnss_lib_py.parsers.rinex_nav import RinexNav
 from gnss_lib_py.utils.ephemeris_downloader import load_ephemeris
 import re
@@ -41,7 +35,6 @@ def parse_arguments():
     return args
 
 def read_data(input_filepath):
-    # TODO: fix and remove all android related stuff
     measurements, android_fixes= [], []
     with open(input_filepath) as csvfile:
         reader = csv.reader(csvfile)
@@ -119,7 +112,7 @@ def calculate_satellite_position(rinex_nav, gps_time):
             zk = yk_prime * np.sin(ik)
             positions.append((eph['sv_id'], xk, yk, zk))
         except Exception as e:
-            pass  # Handle the exception
+            pass
     
     result_df = pd.DataFrame(positions, columns=['sv_id', 'x_k', 'y_k', 'z_k'])
     return result_df
@@ -141,7 +134,7 @@ def process_new_data(file_path):
         rinex_nav = RinexNav(ephemeris_files, measurements['SvName'].unique())
         rinex_nav_df = rinex_nav.pandas_df()
 
-        # Combine cached satellite data with new data
+
         csv_output = []
         for epoch in measurements['Epoch'].unique():
             one_epoch = measurements.loc[(measurements['Epoch'] == epoch)].drop_duplicates(subset='SvName').set_index('SvName')
@@ -188,6 +181,7 @@ def process_new_data(file_path):
     
     
 def main():
+    #cleanup incase there are old files#
     old_csv_file = "gnss_measurements_output.csv"
     if os.path.exists(old_csv_file):
         os.remove(old_csv_file)
