@@ -1,5 +1,7 @@
 igs/
 nasa/
+clk/
+sp3/
 *.csv
 *.kml
 __pycache__

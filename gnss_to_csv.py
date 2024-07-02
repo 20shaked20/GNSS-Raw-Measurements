@@ -1,23 +1,25 @@
+#!/usr/bin/python
+
+import sys
 import traceback
 import os
 import csv
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import pandas as pd
 import numpy as np
-from gnss_lib_py.parsers.rinex_nav import RinexNav
-from gnss_lib_py.utils.ephemeris_downloader import load_ephemeris
-import re
+import matplotlib.pyplot as plt
+import navpy
+from gnssutils import EphemerisManager
 
 pd.options.mode.chained_assignment = None
 
+# TODO: logging?
 
 # Constants
 WEEKSEC = 604800
 LIGHTSPEED = 2.99792458e8
 GPS_EPOCH = datetime(1980, 1, 6, 0, 0, 0)
-MU = 3.986005e14  # Earth's universal gravitational parameter
-OMEGA_E_DOT = 7.2921151467e-5  # Earth's rotation rate
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
@@ -35,6 +37,7 @@ def parse_arguments():
     return args
 
 def read_data(input_filepath):
+    # TODO: fix and remove all android related stuff
     measurements, android_fixes= [], []
     with open(input_filepath) as csvfile:
         reader = csv.reader(csvfile)
@@ -53,144 +56,149 @@ def read_data(input_filepath):
     return pd.DataFrame(measurements[1:], columns=measurements[0])
 
 def preprocess_measurements(measurements):
+    # Format satellite IDs
     measurements.loc[measurements['Svid'].str.len() == 1, 'Svid'] = '0' + measurements['Svid']
     constellation_map = {
         '1': 'G',  # GPS
-        '3': 'R',  # GLONASS
-        '5': 'E',  # Galileo
-        '6': 'C',  # Beidou
+        #'3': 'R',  # GLONASS
+        #'5': 'E',  # Galileo
+        #'6': 'C',  # Beidou
     }
     measurements['Constellation'] = measurements['ConstellationType'].map(constellation_map)
     measurements['SvName'] = measurements['Constellation'] + measurements['Svid']
     measurements = measurements[measurements['Constellation'].isin(constellation_map.values())]
+    # Convert columns to numeric representation and handle missing data robustly
     numeric_cols = ['Cn0DbHz', 'TimeNanos', 'FullBiasNanos', 'ReceivedSvTimeNanos',
                     'PseudorangeRateMetersPerSecond', 'ReceivedSvTimeUncertaintyNanos',
                     'BiasNanos', 'TimeOffsetNanos']
     for col in numeric_cols:
         measurements[col] = pd.to_numeric(measurements[col], errors='coerce').fillna(0)
+    # Generate GPS and Unix timestamps
     measurements['GpsTimeNanos'] = measurements['TimeNanos'] - (measurements['FullBiasNanos'] - measurements['BiasNanos'])
     measurements['UnixTime'] = pd.to_datetime(measurements['GpsTimeNanos'], utc=True, origin=GPS_EPOCH)
+    # Identify epochs based on time gaps
     measurements['Epoch'] = 0
     time_diff = measurements['UnixTime'] - measurements['UnixTime'].shift()
     measurements.loc[time_diff > timedelta(milliseconds=200), 'Epoch'] = 1
     measurements['Epoch'] = measurements['Epoch'].cumsum()
+    # Calculations related to GNSS Nanos, week number, seconds, pseudorange
     measurements['tRxGnssNanos'] = measurements['TimeNanos'] + measurements['TimeOffsetNanos'] - \
                                    (measurements['FullBiasNanos'].iloc[0] + measurements['BiasNanos'].iloc[0])
     measurements['GpsWeekNumber'] = np.floor(1e-9 * measurements['tRxGnssNanos'] / WEEKSEC)
     measurements['tRxSeconds'] = 1e-9 * measurements['tRxGnssNanos'] - WEEKSEC * measurements['GpsWeekNumber']
     measurements['tTxSeconds'] = 1e-9 * (measurements['ReceivedSvTimeNanos'] + measurements['TimeOffsetNanos'])
     measurements['prSeconds'] = measurements['tRxSeconds'] - measurements['tTxSeconds']
+    # Convert pseudorange from seconds to meters
     measurements['PrM'] = LIGHTSPEED * measurements['prSeconds']
     measurements['PrSigmaM'] = LIGHTSPEED * 1e-9 * measurements['ReceivedSvTimeUncertaintyNanos']
     return measurements
 
-def calculate_satellite_position(rinex_nav, gps_time):
-    positions = []
-    for _, eph in rinex_nav.iterrows():
-        try:
-            a = eph['sqrtA'] ** 2
-            n0 = np.sqrt(MU / a ** 3)
-            n = n0 + eph['deltaN']
-            tk = gps_time - eph['t_oe']
-            mk = eph['M_0'] + n * tk
-            ek = mk
-            for _ in range(10):
-                ek = mk + eph['e'] * np.sin(ek)
-            vk = np.arctan2(np.sqrt(1 - eph['e'] ** 2) * np.sin(ek), np.cos(ek) - eph['e'])
-            phi_k = vk + eph['omega']
-            delta_uk = eph['C_us'] * np.sin(2 * phi_k) + eph['C_uc'] * np.cos(2 * phi_k)
-            delta_rk = eph['C_rs'] * np.sin(2 * phi_k) + eph['C_rc'] * np.cos(2 * phi_k)
-            delta_ik = eph['C_is'] * np.sin(2 * phi_k) + eph['C_ic'] * np.cos(2 * phi_k)
-            uk = phi_k + delta_uk
-            rk = a * (1 - eph['e'] * np.cos(ek)) + delta_rk
-            ik = eph['i_0'] + delta_ik + eph['IDOT'] * tk
-            xk_prime = rk * np.cos(uk)
-            yk_prime = rk * np.sin(uk)
-            omega_k = eph['Omega_0'] + (eph['OmegaDot'] - OMEGA_E_DOT) * tk - OMEGA_E_DOT * eph['t_oe']
-            xk = xk_prime * np.cos(omega_k) - yk_prime * np.sin(omega_k) * np.cos(ik)
-            yk = xk_prime * np.sin(omega_k) + yk_prime * np.cos(omega_k) * np.cos(ik)
-            zk = yk_prime * np.sin(ik)
-            positions.append((eph['sv_id'], xk, yk, zk))
-        except Exception as e:
-            pass
-    
-    result_df = pd.DataFrame(positions, columns=['sv_id', 'x_k', 'y_k', 'z_k'])
-    return result_df
-
-
-def process_new_data(file_path):
-    try:
-        unparsed_measurements = read_data(file_path)
-        measurements = preprocess_measurements(unparsed_measurements)
-        gps_millis = measurements['GpsTimeNanos'].values / 1e6  # Convert nanoseconds to milliseconds
+def calculate_satellite_position(ephemeris, transmit_time):
+    mu = 3.986005e14
+    OmegaDot_e = 7.2921151467e-5
+    F = -4.442807633e-10
+    sv_position = pd.DataFrame()
+    sv_position['sv']= ephemeris.index
+    sv_position.set_index('sv', inplace=True)
+    sv_position['t_k'] = transmit_time - ephemeris['t_oe']
+    A = ephemeris['sqrtA'].pow(2)
+    n_0 = np.sqrt(mu / A.pow(3))
+    n = n_0 + ephemeris['deltaN']
+    M_k = ephemeris['M_0'] + n * sv_position['t_k']
+    E_k = M_k
+    err = pd.Series(data=[1]*len(sv_position.index))
+    i = 0
+    while err.abs().min() > 1e-8 and i < 10:
+        new_vals = M_k + ephemeris['e']*np.sin(E_k)
+        err = new_vals - E_k
+        E_k = new_vals
+        i += 1
         
-        ephemeris_files = load_ephemeris('rinex_nav', gps_millis.astype(np.int64), constellations=['gps'], download_directory=os.getcwd(), verbose=True)
+    sinE_k = np.sin(E_k)
+    cosE_k = np.cos(E_k)
+    delT_r = F * ephemeris['e'].pow(ephemeris['sqrtA']) * sinE_k
+    delT_oc = transmit_time - ephemeris['t_oc']
+    sv_position['delT_sv'] = ephemeris['SVclockBias'] + ephemeris['SVclockDrift'] * delT_oc + ephemeris['SVclockDriftRate'] * delT_oc.pow(2)
 
+    v_k = np.arctan2(np.sqrt(1-ephemeris['e'].pow(2))*sinE_k,(cosE_k - ephemeris['e']))
 
-        # Reindex epochs to be sequential starting from zero
-        measurements['Epoch'] = measurements['Epoch'].rank(method='dense').astype(int) - 1
+    Phi_k = v_k + ephemeris['omega']
 
-        # Identify satellites
-        rinex_nav = RinexNav(ephemeris_files, measurements['SvName'].unique())
-        rinex_nav_df = rinex_nav.pandas_df()
+    sin2Phi_k = np.sin(2*Phi_k)
+    cos2Phi_k = np.cos(2*Phi_k)
 
+    du_k = ephemeris['C_us']*sin2Phi_k + ephemeris['C_uc']*cos2Phi_k
+    dr_k = ephemeris['C_rs']*sin2Phi_k + ephemeris['C_rc']*cos2Phi_k
+    di_k = ephemeris['C_is']*sin2Phi_k + ephemeris['C_ic']*cos2Phi_k
 
-        csv_output = []
-        for epoch in measurements['Epoch'].unique():
-            one_epoch = measurements.loc[(measurements['Epoch'] == epoch)].drop_duplicates(subset='SvName').set_index('SvName')
-            if len(one_epoch.index) > 4:
-                timestamp = one_epoch.iloc[0]['UnixTime'].to_pydatetime(warn=False)
-                
-                if epoch >= len(gps_millis):
-                    print(f"Epoch index {epoch} out of bounds for gps_millis with length {len(gps_millis)}.")
-                    continue
+    u_k = Phi_k + du_k
 
-                gps_time = gps_millis[epoch]
+    r_k = A*(1 - ephemeris['e']*np.cos(E_k)) + dr_k
 
-                sv_positions = calculate_satellite_position(rinex_nav_df, gps_time)
+    i_k = ephemeris['i_0'] + di_k + ephemeris['IDOT']*sv_position['t_k']
 
-                for sv in one_epoch.index:
-                    id = int(re.search(r'\d+', sv).group())
+    x_k_prime = r_k*np.cos(u_k)
+    y_k_prime = r_k*np.sin(u_k)
 
-                    if id in sv_positions['sv_id'].values:
-                        pos = sv_positions[sv_positions['sv_id'] == id].iloc[0]
-                        csv_output.append({
-                            "GPS Time": timestamp.isoformat(),
-                            "SatPRN (ID)": sv,
-                            "Constellation": sv[0],
-                            "SatX": pos['x_k'],
-                            "SatY": pos['y_k'],
-                            "SatZ": pos['z_k'],
-                            "Pseudo-Range": one_epoch.at[sv, 'PrM'],
-                            "CN0": one_epoch.at[sv, 'Cn0DbHz'],
-                            "Doppler": one_epoch.at[sv, 'DopplerShiftHz'] if 'DopplerShiftHz' in one_epoch.columns else 'NaN'
-                        })
+    Omega_k = ephemeris['Omega_0'] + (ephemeris['OmegaDot'] - OmegaDot_e)*sv_position['t_k'] - OmegaDot_e*ephemeris['t_oe']
 
-        if csv_output:
-            csv_df = pd.DataFrame(csv_output)
-            csv_file_path = "gnss_measurements_output.csv"
-            if not os.path.isfile(csv_file_path):
-                csv_df.to_csv(csv_file_path, mode='w', header=True, index=False)
-            else:
-                csv_df.to_csv(csv_file_path, mode='a', header=False, index=False)
-            print("CSV output updated successfully.")
-        
-    except Exception as e:
-        print(f"An error occurred while processing new data from {file_path}: {e}")
-        traceback.print_exc()
+    sv_position['x_k'] = x_k_prime*np.cos(Omega_k) - y_k_prime*np.cos(i_k)*np.sin(Omega_k)
+    sv_position['y_k'] = x_k_prime*np.sin(Omega_k) + y_k_prime*np.cos(i_k)*np.cos(Omega_k)
+    sv_position['z_k'] = y_k_prime*np.sin(i_k)
+    return sv_position
     
-    
+
 def main():
-    #cleanup incase there are old files#
-    old_csv_file = "gnss_measurements_output.csv"
-    if os.path.exists(old_csv_file):
-        os.remove(old_csv_file)
-        
     args = parse_arguments()
-    file_path = args.input_file
-    print(file_path)
-    process_new_data(file_path)
-    
+    # TODO: add cleanup of existing igs & nasa folders
+    unparsed_measurements = read_data(args.input_file)
+    measurements = preprocess_measurements(unparsed_measurements)
+    print(args.data_directory)
+    manager = EphemerisManager(args.data_directory)
+        
+    csv_output = []
+    for epoch in measurements['Epoch'].unique():
+        one_epoch = measurements.loc[(measurements['Epoch'] == epoch) & (measurements['prSeconds'] < 0.1)] 
+        one_epoch = one_epoch.drop_duplicates(subset='SvName').set_index('SvName')
+        if len(one_epoch.index) > 4:
+            timestamp = one_epoch.iloc[0]['UnixTime'].to_pydatetime(warn=False)
+            
+            # Calculating satellite positions (ECEF)
+            sats = one_epoch.index.unique().tolist()
+            ephemeris = manager.get_ephemeris(timestamp, sats)
+            sv_position = calculate_satellite_position(ephemeris, one_epoch['tTxSeconds'])
+
+            # Apply satellite clock bias to correct the measured pseudorange values
+            # Ensure sv_position's index matches one_epoch's index
+            sv_position.index = sv_position.index.map(str)  # Ensuring index types match; adjust as needed
+            one_epoch = one_epoch.join(sv_position[['delT_sv']], how='left')
+            one_epoch['PrM_corrected'] = one_epoch['PrM'] + LIGHTSPEED * one_epoch['delT_sv']
+
+            # Doppler shift calculation
+            doppler_calculated = False
+            try:
+                one_epoch['CarrierFrequencyHz'] = pd.to_numeric(one_epoch['CarrierFrequencyHz'])
+                one_epoch['DopplerShiftHz'] = -(one_epoch['PseudorangeRateMetersPerSecond'] / LIGHTSPEED) * one_epoch['CarrierFrequencyHz']
+                doppler_calculated = True
+            except Exception:
+                pass
+        
+            for sv in one_epoch.index:
+                csv_output.append({
+                    "GPS Time": timestamp.isoformat(),
+                    "SatPRN (ID)": sv,
+                    "SatX": sv_position.at[sv, 'x_k'] if sv in sv_position.index else np.nan,
+                    "SatY": sv_position.at[sv, 'y_k'] if sv in sv_position.index else np.nan,
+                    "SatZ": sv_position.at[sv, 'z_k'] if sv in sv_position.index else np.nan,
+                    "Pseudo-Range": one_epoch.at[sv, 'PrM_corrected'],
+                    "CN0": one_epoch.at[sv, 'Cn0DbHz'],
+                    "Doppler": one_epoch.at[sv, 'DopplerShiftHz'] if doppler_calculated else 'NaN'
+                })
+            
+    # TODO: file name should be more similar to input file name
+    csv_df = pd.DataFrame(csv_output)
+    csv_df.to_csv("gnss_measurements_output.csv", index=False)
+
 try:
     main()
 except Exception as e:
