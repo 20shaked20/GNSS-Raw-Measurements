@@ -4,6 +4,29 @@
   text-align: center;
 }
 
+header {
+  background: #282c34;
+  padding: 10px;
+  color: white;
+}
+
+nav ul {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+}
+
+nav ul li {
+  margin: 0 15px;
+  cursor: pointer;
+  color: white;
+}
+
+nav ul li:hover {
+  text-decoration: underline;
+}
+
 table {
   margin: 20px auto;
   border-collapse: collapse;
@@ -13,4 +36,18 @@ th, td {
   border: 1px solid black;
   padding: 8px;
   text-align: left;
+}
+
+svg {
+  margin: 20px auto;
+  display: block;
+}
+
+ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+li {
+  margin: 5px 0;
 }
