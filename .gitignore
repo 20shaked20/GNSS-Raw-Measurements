@@ -31,3 +31,7 @@ gnssutils/__pycache__/__init__.cpython-311.pyc
 gnssutils/__pycache__/ephemeris_manager.cpython-311.pyc
 gnssutils/__pycache__/__init__.cpython-311.pyc
 gnssutils/__pycache__/ephemeris_manager.cpython-311.pyc
+=======
+*.txt
+*.log
+.vscode

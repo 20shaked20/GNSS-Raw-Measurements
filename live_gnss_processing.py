@@ -9,6 +9,7 @@ import numpy as np
 from gnss_lib_py.utils.ephemeris_downloader import load_ephemeris
 import re
 from gnss_lib_py.parsers.rinex_nav import RinexNav
+import time
 
 pd.options.mode.chained_assignment = None
 
@@ -23,6 +24,7 @@ OMEGA_E_DOT = 7.2921151467e-5  # Earth's rotation rate
 satellite_cache = {}
 seen_satellites = set()
 
+#TODO: make the ADB commands outside file that we can use, instead on this one 
 def run_adb_command(command):
     result = subprocess.run(['adb'] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
@@ -70,6 +72,8 @@ def pull_file(file_to_pull):
     pull_command = ['shell', 'cat', file_to_pull]
     new_data = run_adb_command(pull_command)
     return new_data
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
@@ -154,7 +158,7 @@ def calculate_satellite_position(rinex_nav, gps_time):
             zk = yk_prime * np.sin(ik)
             positions.append((eph['sv_id'], xk, yk, zk))
         except Exception as e:
-            pass  # Handle the exception
+            pass
     
     result_df = pd.DataFrame(positions, columns=['sv_id', 'x_k', 'y_k', 'z_k'])
     return result_df
@@ -175,15 +179,15 @@ def process_new_data(file_path, measurements, ephemeris_files, last_processed_ti
         # Reindex epochs to be sequential starting from zero
         new_measurements['Epoch'] = new_measurements['Epoch'].rank(method='dense').astype(int) - 1
 
-        # Identify new satellites
+        # new satellites
         new_satellites = set(new_measurements['SvName'].unique()) - seen_satellites
 
-        # Only call RinexNav if there are new satellites
+        # Only call RinexNav if there are new satellites that has been seen
         if new_satellites:
             print(f"New satellites detected: {new_satellites}")
             rinex_nav = RinexNav(ephemeris_files, list(new_satellites))
             rinex_nav_df = rinex_nav.pandas_df()
-            if rinex_nav_df.empty:  # case where we do not have the data for the satellite (which might happen)
+            if rinex_nav_df.empty:  # TODO: fix this, as this is not 100% yet # case where we do not have the data for the satellite (which might happen)
                 return
             
             # Update the cache
@@ -207,8 +211,6 @@ def process_new_data(file_path, measurements, ephemeris_files, last_processed_ti
                     continue
 
                 gps_time = gps_millis[epoch]
-
-                sats = one_epoch.index.unique().tolist()
 
                 sv_positions = calculate_satellite_position(cached_data, gps_time)
 
@@ -244,10 +246,12 @@ def process_new_data(file_path, measurements, ephemeris_files, last_processed_ti
         traceback.print_exc()
         return last_processed_time
 
-
-import time
-
 def main():
+    #cleanup incase there are old files#
+    old_csv_file = "gnss_measurements_output.csv"
+    if os.path.exists(old_csv_file):
+        os.remove(old_csv_file)
+    
     directory_to_pull = '/storage/emulated/0/Android/data/com.android.gpstest/files/gnss_log/'
     destination = './'
     delete_files_in_directory(directory_to_pull)
@@ -255,7 +259,7 @@ def main():
     last_checked_times = {}
     last_processed_time = None
 
-    # Wait for the initial file to be generated
+    #waiting for the initial file to be generated
     initial_file = None
     while not initial_file:
         files = get_files_in_directory(directory_to_pull)
@@ -264,7 +268,7 @@ def main():
             initial_file = f'{directory_to_pull}/{files[0]}'
         else:
             print("Waiting for the initial file to be generated...")
-            time.sleep(5)  # Wait for 5 seconds before checking again
+            time.sleep(5) 
 
     # Initial setup
     initial_data = pull_file(initial_file)
