@@ -149,6 +149,11 @@ def calculate_satellite_position(ephemeris, transmit_time):
     
 
 def main():
+    #cleanup incase there are old files#
+    old_csv_file = "gnss_measurements_output.csv"
+    if os.path.exists(old_csv_file):
+        os.remove(old_csv_file)
+
     args = parse_arguments()
     # TODO: add cleanup of existing igs & nasa folders
     unparsed_measurements = read_data(args.input_file)

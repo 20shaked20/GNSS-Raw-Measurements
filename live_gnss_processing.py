@@ -282,9 +282,6 @@ def process_new_data(file_path, measurements, EphemManager, last_processed_time)
                 gps_transmit_times = one_epoch[one_epoch['ConstellationType'] == 'G']['tTxSeconds']
                 glonass_transmit_times = one_epoch[one_epoch['ConstellationType'] == 'R']['tTxSeconds']
 
-                print("GPS Transmit Times:", gps_transmit_times)
-                print("GLONASS Transmit Times:", glonass_transmit_times)
-
                 if not gps_ephemeris.empty and not gps_transmit_times.empty:
                     gps_sv_position = calculate_satellite_position(gps_ephemeris, gps_transmit_times)
 
@@ -293,15 +290,12 @@ def process_new_data(file_path, measurements, EphemManager, last_processed_time)
 
                 # Combine GPS and GLONASS positions
                 sv_position = pd.concat([gps_sv_position, glonass_sv_position])
-                print("Satellite Positions:\n", sv_position)
 
                 # Apply satellite clock bias to correct the measured pseudorange values
                 # Ensure sv_position's index matches one_epoch's index
                 sv_position.index = sv_position.index.map(str)  # Ensuring index types match; adjust as needed
                 one_epoch = one_epoch.join(sv_position[['delT_sv']], how='left')
                 one_epoch['PrM_corrected'] = one_epoch['PrM'] + LIGHTSPEED * one_epoch['delT_sv']
-
-                print("PrM_corrected:", one_epoch['PrM_corrected'])
 
                 # Doppler shift calculation
                 doppler_calculated = False
