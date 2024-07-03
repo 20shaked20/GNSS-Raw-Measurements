@@ -1,0 +1,24 @@
+.map-container {
+  height: calc(100vh - 60px); /* Adjust this if your header height changes */
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+body, html, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+#map {
+  height: 100%;
+  width: 100%;
+}
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+}
