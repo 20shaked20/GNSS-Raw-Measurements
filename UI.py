@@ -1,144 +1,65 @@
-import sys
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-import subprocess
 import pandas as pd
-import os
-import xml.etree.ElementTree as ET
-import tkintermapview
 
-class KMLViewer(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("KML and GNSS Viewer")
-        self.geometry("800x600")
+def calculate_glonass_position(ephemeris, transmit_time):
+    sv_position = pd.DataFrame()
+    sv_position['sv'] = ephemeris.index
+    sv_position.set_index('sv', inplace=True)
 
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True)
+    # Ensure transmit_time and MessageFrameTime are in the same units
+    transmit_time = transmit_time.astype(float)
+    MessageFrameTime = ephemeris['MessageFrameTime'].astype(float)
 
-        self.create_kml_tab()
-        self.create_gnss_tab()
+    # Print raw time values for diagnostics
+    print("transmit_time (seconds):", transmit_time)
+    print("MessageFrameTime (seconds):", MessageFrameTime)
 
-    def create_kml_tab(self):
-        kml_frame = ttk.Frame(self.notebook)
-        self.notebook.add(kml_frame, text="KML Viewer")
+    # Time from ephemeris reference epoch
+    sv_position['t_k'] = transmit_time - MessageFrameTime
 
-        self.map_widget = tkintermapview.TkinterMapView(kml_frame, width=800, height=600)
-        self.map_widget.pack(fill="both", expand=True)
+    # Print t_k for diagnostics
+    print("t_k (seconds):", sv_position['t_k'])
 
-        self.load_button = tk.Button(kml_frame, text="Load KML File", command=self.load_kml_file)
-        self.load_button.pack(pady=10)
+    # Simplified position and velocity at reference time
+    sv_position['x_k'] = ephemeris['X'] + ephemeris['dX'] * sv_position['t_k']
+    sv_position['y_k'] = ephemeris['Y'] + ephemeris['dY'] * sv_position['t_k']
+    sv_position['z_k'] = ephemeris['Z'] + ephemeris['dZ'] * sv_position['t_k']
 
-    def create_gnss_tab(self):
-        gnss_frame = ttk.Frame(self.notebook)
-        self.notebook.add(gnss_frame, text="GNSS Processing")
+    # Calculate the clock correction
+    sv_position['delT_sv'] = ephemeris['SVclockBias'] + ephemeris['SVrelFreqBias'] * (transmit_time - ephemeris['t_oc'])
 
-        mode_frame = ttk.Frame(gnss_frame)
-        mode_frame.pack(pady=20)
+    # Print position values for diagnostics
+    print("x_k (meters):", sv_position['x_k'])
+    print("y_k (meters):", sv_position['y_k'])
+    print("z_k (meters):", sv_position['z_k'])
+    print("delT_sv (seconds):", sv_position['delT_sv'])
 
-        btn_offline = ttk.Button(mode_frame, text='Offline Mode', command=self.selectOfflineMode)
-        btn_offline.pack(side=tk.LEFT, padx=10)
+    return sv_position
 
-        btn_live = ttk.Button(mode_frame, text='Live Mode', command=self.selectLiveMode)
-        btn_live.pack(side=tk.LEFT, padx=10)
+# Sample data for testing
+ephemeris_data = {
+    'SVclockBias': [9.02e-05],
+    'SVrelFreqBias': [9.09e-13],
+    'MessageFrameTime': [259200],
+    'X': [-3166469.238],
+    'dX': [-3042.001724],
+    'dX2': [9.31e-07],
+    'Y': [11415466.31],
+    'dY': [561.3451004],
+    'dY2': [-9.31e-07],
+    'FreqNum': [1],
+    'Z': [-22588762.21],
+    'dZ': [711.5707397],
+    'dZ2': [2.79e-06],
+    'source': ["C:\\Users\\shake\\OneDrive\\Desktop\\VsCode\\GNSS-Raw-Measurements\\data\\ephemeris\\nasa\\BRDC00WRD_S_20241850000_01D_MN.rnx"],
+    't_oc': [260100]
+}
+ephemeris_df = pd.DataFrame(ephemeris_data, index=['R01'])
 
-        self.selected_file = None
-        self.log_files = self.get_available_log_files()
+# Example transmit_time for testing
+transmit_time_series = pd.Series([84221.348373], index=['R01'], name='tTxSeconds')
 
-        self.file_label = ttk.Label(gnss_frame, text="Select a GNSS log file:")
-        self.file_label.pack(pady=10)
+# Call the function
+glonass_position = calculate_glonass_position(ephemeris_df, transmit_time_series)
 
-        self.file_combobox = ttk.Combobox(gnss_frame, values=self.log_files, state='readonly')
-        self.file_combobox.current(0)
-        self.file_combobox.pack()
-
-        self.status_label = ttk.Label(gnss_frame, text="")
-        self.status_label.pack(pady=10)
-
-        self.info_label = ttk.Label(gnss_frame, text="Select information to display:")
-        self.info_label.pack(pady=10)
-
-        self.info_var = tk.StringVar()
-        self.info_var.set("Total number of satellites")
-        self.info_dropdown = ttk.OptionMenu(gnss_frame, self.info_var, "Total number of satellites", "Total number of satellites", "Satellite names and counts")
-        self.info_dropdown.pack()
-
-        self.satellite_info_label = ttk.Label(gnss_frame, text="")
-        self.satellite_info_label.pack(pady=10)
-
-    def load_kml_file(self):
-        file_path = filedialog.askopenfilename(filetypes=[("KML files", "*.kml")])
-        if not file_path:
-            return
-
-        try:
-            tree = ET.parse(file_path)
-            root = tree.getroot()
-            namespace = {"kml": "http://www.opengis.net/kml/2.2"}
-
-            for placemark in root.findall(".//kml:Placemark", namespace):
-                name = placemark.find("kml:name", namespace).text if placemark.find("kml:name", namespace) is not None else "Unknown"
-                coordinates = placemark.find(".//kml:coordinates", namespace).text.strip() if placemark.find(".//kml:coordinates", namespace) is not None else None
-
-                if coordinates:
-                    lon, lat, _ = map(float, coordinates.split(","))
-                    self.map_widget.set_position(lat, lon)
-                    self.map_widget.set_marker(lat, lon)
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load KML file: {e}")
-
-    def get_available_log_files(self):
-        log_dir = 'data'
-        log_files = [file for file in os.listdir(log_dir) if file.endswith('.txt')]
-        return log_files
-
-    def selectOfflineMode(self):
-        selected_file = self.file_combobox.get()
-
-        if not selected_file:
-            messagebox.showerror('Error', 'Please select a log file.')
-            return
-
-        try:
-            python_executable = sys.executable
-            log_path = os.path.join('data', selected_file)
-            cmd = [python_executable, 'C:/Users/t-dzorohov/PycharmProjects/GNSS-Raw-Measurements_final/gnss_processing.py']
-
-            self.status_label.config(text="Processing...")
-
-            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            stdout, stderr = process.communicate(input=f'{log_path}\n')
-
-            if process.returncode != 0:
-                messagebox.showerror('Error', f'Error running gnss_processing.py: {stderr}')
-                self.status_label.config(text="Error")
-                return
-
-            csv_output_file = "gnss_measurements_output.csv"
-            df = pd.read_csv(csv_output_file)
-
-            unique_satellites = df['SatPRN (ID)'].nunique()
-            satellite_names_counts = df['SatPRN (ID)'].value_counts()
-
-            self.status_label.config(text="CSV generated")
-
-            selected_info = self.info_var.get()
-            if selected_info == "Total number of satellites":
-                self.satellite_info_label.config(text=f"Total number of satellites: {unique_satellites}")
-            elif selected_info == "Satellite names and counts":
-                self.satellite_info_label.config(text=f"Satellite names and counts:\n{satellite_names_counts}")
-
-        except subprocess.CalledProcessError as e:
-            messagebox.showerror('Error', f'Error running gnss_processing.py: {e}')
-            self.status_label.config(text="Error")
-        except Exception as e:
-            messagebox.showerror('Error', f'An error occurred: {e}')
-            self.status_label.config(text="Error")
-
-    def selectLiveMode(self):
-        messagebox.showinfo('Live Mode', 'Live mode instructions will be displayed here.')
-
-if __name__ == "__main__":
-    app = KMLViewer()
-    app.mainloop()
+# Print results
+print(glonass_position)

@@ -94,6 +94,8 @@ class EphemerisManager:
         data['time'] = data['time'].dt.tz_localize('UTC')
         data.rename(columns={'M0': 'M_0', 'Eccentricity': 'e', 'Toe': 't_oe', 'DeltaN': 'deltaN', 'Cuc': 'C_uc', 'Cus': 'C_us',
                              'Cic': 'C_ic', 'Crc': 'C_rc', 'Cis': 'C_is', 'Crs': 'C_rs', 'Io': 'i_0', 'Omega0': 'Omega_0'}, inplace=True)
+        
+        # data.to_csv("Ephemdata.csv")
         return data
 
     @staticmethod
@@ -187,5 +189,5 @@ class EphemerisManager:
 if __name__ == '__main__':
     repo = EphemerisManager()
     target_time = datetime(2024, 1, 9, 12, 0, 0, tzinfo=timezone.utc)
-    data = repo.get_ephemeris(target_time, ['G01', 'G03','C11','E14'])
+    data = repo.get_ephemeris(target_time, ['G01', 'G03','C11','E14', 'R06'])
     print(data)
