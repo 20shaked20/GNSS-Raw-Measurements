@@ -4,8 +4,8 @@ const cors = require('cors');
 const path = require('path');
 const bodyParser = require('body-parser');
 const fs = require('fs');
-const { spawn } = require('child_process'); // Import the spawn function
-//const { PythonShell } = require('python-shell'); // Import PythonShell from python-shell module
+const { spawn } = require('child_process'); 
+
 
 const app = express();
 const PORT = 5000;
@@ -44,7 +44,6 @@ app.post('/run-gnss', (req, res) => {
   
   process.stdout.on('data', (data) => {
     console.log(`stdout: ${data}`);
-    // Assuming the script asks for the file name with a prompt
     if (data.toString().includes('Enter the GNSS log file name: ')) {
       process.stdin.write(filePath + '\n');
     }
@@ -58,7 +57,6 @@ app.post('/run-gnss', (req, res) => {
     if (code !== 0) {
       res.status(500).json({ error: `gnss_processing.py process exited with code ${code}` });
     } else {
-      // Assuming the processing is completed and the CSV file is generated
       const csvFilePath = path.join(__dirname, '../gnss_measurements_output.csv');
       fs.access(csvFilePath, fs.constants.F_OK, (err) => {
         if (err) {
@@ -70,44 +68,6 @@ app.post('/run-gnss', (req, res) => {
     }
   });
 });
-
-
-// Endpoint to run gnss_processing.py
-// app.post('/run-gnss', (req, res) => {
-//   const logFileName = req.body.fileName;
-//   if (!logFileName) {
-//     res.status(400).json({ error: 'No file name provided' });
-//     return;
-//   }
-  
-//   // Configure PythonShell
-//   let options = {
-//     mode: 'text',
-//     pythonPath: path.join(__dirname, '../.venv/Scripts/python'), // Path to your Python executable
-//     pythonOptions: ['-u'], // get print results in real-time
-//     scriptPath: path.join(__dirname, '../'),
-//     args: [path.join(__dirname, '../data', logFileName)] // Pass arguments to the script
-//   };
-
-//   // Run Python script
-//   PythonShell.run('gnss_processing.py', options, function (err, results) {
-//     if (err) {
-//       console.error('Error occurred:', err);
-//       res.status(500).json({ error: 'An error occurred while running the script' });
-//     } else {
-//       // Assuming the script completes successfully
-//       console.log('Script finished:', results);
-//       const csvFilePath = path.join(__dirname, '../gnss_measurements_output.csv');
-//       fs.access(csvFilePath, fs.constants.F_OK, (err) => {
-//         if (err) {
-//           res.status(500).json({ error: 'Failed to find generated CSV file' });
-//         } else {
-//           res.json({ message: 'Processing completed successfully' });
-//         }
-//       });
-//     }
-//   });
-// });
 
 
 app.listen(PORT, () => {

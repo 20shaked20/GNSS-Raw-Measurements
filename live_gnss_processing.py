@@ -190,6 +190,7 @@ def calculate_satellite_position(ephemeris, transmit_time):
     sv_position['z_k'] = y_k_prime*np.sin(i_k)
     return sv_position
 
+#TODO : understand why the hell is not working.. :(
 def calculate_glonass_position(ephemeris, transmit_time):
     # Constants
     Omega_e = 7.2921151467e-5  # Earth's rotation rate in rad/s
@@ -273,9 +274,6 @@ def process_new_data(file_path, measurements, EphemManager, last_processed_time)
 
                 gps_sv_position = pd.DataFrame()
                 glonass_sv_position = pd.DataFrame()
-
-                # Ensure ConstellationType is assigned in one_epoch
-                one_epoch['ConstellationType'] = one_epoch.index.str[0]
 
                 # Separate transmit times by constellation type
                 gps_transmit_times = one_epoch[one_epoch['ConstellationType'] == 'G']['tTxSeconds']

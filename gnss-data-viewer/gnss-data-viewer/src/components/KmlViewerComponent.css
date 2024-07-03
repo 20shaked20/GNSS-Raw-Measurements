@@ -1,5 +1,5 @@
 .map-container {
-  height: calc(100vh - 60px); /* Adjust this if your header height changes */
+  height: calc(100vh - 60px);
   width: 100%;
   position: relative;
   overflow: hidden;
