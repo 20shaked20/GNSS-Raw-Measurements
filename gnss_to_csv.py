@@ -1,15 +1,10 @@
-#!/usr/bin/python
-
-import sys
 import traceback
 import os
 import csv
 import argparse
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import navpy
 from gnssutils import EphemerisManager
 
 pd.options.mode.chained_assignment = None
@@ -37,7 +32,6 @@ def parse_arguments():
     return args
 
 def read_data(input_filepath):
-    # TODO: fix and remove all android related stuff
     measurements, android_fixes= [], []
     with open(input_filepath) as csvfile:
         reader = csv.reader(csvfile)

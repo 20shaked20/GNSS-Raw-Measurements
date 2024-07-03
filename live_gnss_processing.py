@@ -6,7 +6,6 @@ import traceback
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-import re
 import time
 from gnssutils import EphemerisManager
 
@@ -25,7 +24,7 @@ seen_satellites = set()
 
 #TODO: make the ADB commands outside file that we can use, instead on this one 
 def run_adb_command(command):
-    result = subprocess.run(['adb'] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(['android_platform_tools/adb'] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
         raise Exception(f"Command failed with error: {result.stderr}")
     return result.stdout
