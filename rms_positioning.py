@@ -14,7 +14,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='Process multi-GNSS CSV log files for positioning.')
+    parser = argparse.ArgumentParser(description='Process multi-GNSS CSV log files for positioning and spoofing detection.')
     parser.add_argument('--input_file', type=str, default='gnss_measurements_output.csv', help='Input CSV file')
     parser.add_argument('--output_kml', type=str, default='gnss_visualization.kml', help='Output KML file')
     parser.add_argument('--output_txt', type=str, default='RmsResults.txt', help='Output RMS results text file')
@@ -40,7 +40,27 @@ def solve_position_and_compute_rms(sat_positions, pseudoranges, weights):
 def ecef_to_lla(ecef_coords):
     return navpy.ecef2lla(ecef_coords, latlon_unit='deg')
 
-def process_epoch(gps_time, group, kml):
+def detect_spoofing(group, residuals, rms, lla):
+    spoofed_satellites = []
+    
+    if rms > 2000:
+        spoofed_satellites.extend(group['SatPRN (ID)'].tolist())
+        return spoofed_satellites, "High RMS"
+    
+    # Check for unreasonable altitude
+    if lla[2] < -1000 or lla[2] > 100000:  # -1km to 100km range
+        spoofed_satellites.extend(group['SatPRN (ID)'].tolist())
+        return spoofed_satellites, "Unreasonable altitude"
+    
+    # Individual satellite checks using Z-scores
+    z_scores = np.abs((residuals - np.mean(residuals)) / np.std(residuals))
+    threshold = 3 
+    spoofed_indices = np.where(z_scores > threshold)[0]
+    spoofed_satellites.extend(group.iloc[spoofed_indices]['SatPRN (ID)'].tolist())
+    
+    return spoofed_satellites, "Individual satellite anomalies" if spoofed_satellites else "No spoofing detected"
+
+def process_epoch(gps_time, group, kml, previous_position):
     gps_time_dt = pd.to_datetime(gps_time)
     sat_positions = group[['SatX', 'SatY', 'SatZ']].values
     pseudoranges = group['Pseudo-Range'].values
@@ -59,22 +79,41 @@ def process_epoch(gps_time, group, kml):
     pnt = kml.newpoint(name=f"{gps_time}", coords=[(lla[1], lla[0], lla[2])])
     pnt.timestamp.when = gps_time_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     
+    # Detect spoofing
+    estimated_ranges = np.sqrt(((sat_positions - position)**2).sum(axis=1))
+    residuals = estimated_ranges - pseudoranges
+
+    all_satellites = group['SatPRN (ID)'].tolist()
+    spoofed_satellites, spoofing_reason = detect_spoofing(group, residuals, rms, lla)
+    
+    # Check for sudden position jumps
+    if previous_position is not None:
+        distance = np.linalg.norm(position - previous_position)
+        if distance > 1000:  # 1km threshold, adjust as needed
+            spoofed_satellites = group['SatPRN (ID)'].tolist()
+            spoofing_reason = "Sudden position jump"
+    
     return {
         'GPS Time': gps_time,
         'Estimated Position ECEF': position,
         'Estimated Position LLA': lla,
-        'RMS': rms
+        'RMS': rms,
+        'Spoofed Satellites': spoofed_satellites,
+        'Non_spoofed Satellites': [sat for sat in all_satellites if sat not in spoofed_satellites],
+        'Spoofing Reason': spoofing_reason
     }
 
 def process_satellite_data(data, kml_output_path):
     grouped = data.groupby('GPS Time')
     results = []
     kml = simplekml.Kml()
+    previous_position = None
     
     for gps_time, group in grouped:
         try:
-            result = process_epoch(gps_time, group, kml)
+            result = process_epoch(gps_time, group, kml, previous_position)
             results.append(result)
+            previous_position = result['Estimated Position ECEF']
         except ValueError as e:
             logging.error(f"Skipping epoch at {gps_time} due to error: {e}")
     
@@ -91,6 +130,14 @@ def save_results_to_text(results, output_txt):
             f.write(f"Estimated Position ECEF (X, Y, Z): {result['Estimated Position ECEF']}\n")
             f.write(f"Estimated Position LLA (Lat, Lon, Alt): {result['Estimated Position LLA']}\n")
             f.write(f"RMS: {result['RMS']}\n")
+            f.write(f"Spoofing Detected: {'Yes' if result['Spoofed Satellites'] else 'No'}\n")
+            f.write(f"Spoofing Reason: {result['Spoofing Reason']}\n")
+            
+            all_satellites = set(result['Spoofed Satellites']) | set(result.get('Non_spoofed Satellites', []))
+            non_spoofed_satellites = all_satellites - set(result['Spoofed Satellites'])
+            
+            f.write(f"Spoofed Satellites: {', '.join(map(str, result['Spoofed Satellites']))}\n")
+            f.write(f"Non-spoofed Satellites: {', '.join(map(str, non_spoofed_satellites))}\n")
             f.write("-" * 50 + "\n")
 
 def add_position_data_to_csv(results, input_csv, output_csv):
@@ -103,7 +150,9 @@ def add_position_data_to_csv(results, input_csv, output_csv):
         'Lat_calculated': [],
         'Lon_calculated': [],
         'Alt_calculated': [],
-        'RMS': []
+        'RMS': [],
+        'Spoofed_Satellites': [],
+        'Spoofing_Reason': []
     }
     encountered_timestamps = set()
 
@@ -118,6 +167,8 @@ def add_position_data_to_csv(results, input_csv, output_csv):
             add_to_csv['Lon_calculated'].append(result['Estimated Position LLA'][1])
             add_to_csv['Alt_calculated'].append(result['Estimated Position LLA'][2])
             add_to_csv['RMS'].append(result['RMS'])
+            add_to_csv['Spoofed_Satellites'].append(','.join(map(str, result['Spoofed Satellites'])))
+            add_to_csv['Spoofing_Reason'].append(result['Spoofing Reason'])
             encountered_timestamps.add(gps_time)
 
     add_to_csv_df = pd.DataFrame(add_to_csv)
@@ -125,7 +176,8 @@ def add_position_data_to_csv(results, input_csv, output_csv):
     
     # Remove any existing calculated columns from the existing data
     columns_to_remove = ['PosX_calculated', 'PosY_calculated', 'PosZ_calculated',
-                         'Lat_calculated', 'Lon_calculated', 'Alt_calculated', 'RMS']
+                         'Lat_calculated', 'Lon_calculated', 'Alt_calculated', 'RMS',
+                         'Spoofed_Satellites', 'Spoofing_Reason']
     existing_data = existing_data.drop(columns=[col for col in columns_to_remove if col in existing_data.columns])
     
     # Merge the dataframes

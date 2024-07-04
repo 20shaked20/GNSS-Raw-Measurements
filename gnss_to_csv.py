@@ -180,14 +180,6 @@ def calculate_satellite_position(ephemeris, transmit_time):
     return sv_position
     
 def check_satellite_position(sv_position, receiver_position, max_distance_error=1000):
-    """
-    Check if the calculated satellite position is within a reasonable range of the receiver.
-    
-    :param sv_position: DataFrame containing satellite positions
-    :param receiver_position: Approximate receiver position (x, y, z) in ECEF coordinates
-    :param max_distance_error: Maximum allowed distance error in meters
-    :return: Series indicating if each satellite's position is suspicious
-    """
     rx = np.array(receiver_position)
     distances = np.sqrt(((sv_position[['x_k', 'y_k', 'z_k']] - rx)**2).sum(axis=1))
     max_theoretical_distance = 26600000  # Approx. max distance to a GPS satellite in meters
