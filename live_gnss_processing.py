@@ -24,12 +24,33 @@ seen_satellites = set()
 
 #TODO: make the ADB commands outside file that we can use, instead on this one 
 def run_adb_command(command):
+    """
+    Runs an ADB command and returns the output.
+
+    Args:
+        command (list): List of command arguments.
+
+    Returns:
+        str: Output of the ADB command.
+
+    Raises:
+        Exception: If the command fails.
+    """
     result = subprocess.run(['android_platform_tools/adb'] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
         raise Exception(f"Command failed with error: {result.stderr}")
     return result.stdout
 
 def get_files_in_directory(directory):
+    """
+    Gets a list of files in a directory on an Android device.
+
+    Args:
+        directory (str): Directory path.
+
+    Returns:
+        list: List of files in the directory.
+    """
     list_command = ['shell', 'ls', directory]
     try:
         files = run_adb_command(list_command).splitlines()
@@ -39,6 +60,13 @@ def get_files_in_directory(directory):
         return []
 
 def append_new_data(file_path, new_data):
+    """
+    Appends new data to a file.
+
+    Args:
+        file_path (str): Path to the file.
+        new_data (str): Data to append.
+    """
     try:
         with open(file_path, 'a') as file:
             file.write(new_data)
@@ -46,6 +74,15 @@ def append_new_data(file_path, new_data):
         print(f"Error appending new data: {e}")
 
 def read_existing_file(file_path):
+    """
+    Reads the content of an existing file.
+
+    Args:
+        file_path (str): Path to the file.
+
+    Returns:
+        str: Content of the file.
+    """
     if os.path.exists(file_path):
         try:
             with open(file_path, 'r') as file:
@@ -56,6 +93,12 @@ def read_existing_file(file_path):
     return ""
 
 def delete_files_in_directory(directory):
+    """
+    Deletes all files in a directory on an Android device.
+
+    Args:
+        directory (str): Directory path.
+    """
     try:
         files = get_files_in_directory(directory)
         for file in files:
@@ -67,6 +110,15 @@ def delete_files_in_directory(directory):
         print(f"Error deleting files in directory: {e}")
 
 def pull_file(file_to_pull):
+    """
+    Pulls a file from an Android device.
+
+    Args:
+        file_to_pull (str): Path to the file on the device.
+
+    Returns:
+        str: Content of the file.
+    """
     pull_command = ['shell', 'cat', file_to_pull]
     new_data = run_adb_command(pull_command)
     return new_data
@@ -74,12 +126,27 @@ def pull_file(file_to_pull):
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 def parse_arguments():
+    """
+    Parses command-line arguments for the script.
+
+    Returns:
+        argparse.Namespace: Parsed arguments.
+    """
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
     parser.add_argument('--data_directory', type=str, help='Directory for ephemeris data', default=os.getcwd())
     args = parser.parse_args()
     return args
 
 def read_data(input_filepath):
+    """
+    Reads GNSS data from a CSV file.
+
+    Args:
+        input_filepath (str): Path to the input CSV file.
+
+    Returns:
+        pd.DataFrame: DataFrame containing the GNSS measurements.
+    """
     measurements, android_fixes = [], []
     with open(input_filepath) as csvfile:
         reader = csv.reader(csvfile)
@@ -97,6 +164,15 @@ def read_data(input_filepath):
     return pd.DataFrame(measurements[1:], columns=measurements[0])
 
 def preprocess_measurements(measurements):
+    """
+    Preprocesses the GNSS measurements.
+
+    Args:
+        measurements (pd.DataFrame): DataFrame containing the raw GNSS measurements.
+
+    Returns:
+        pd.DataFrame: Preprocessed GNSS measurements.
+    """
     # Format satellite IDs
     measurements.loc[measurements['Svid'].str.len() == 1, 'Svid'] = '0' + measurements['Svid']
     constellation_map = {
@@ -134,8 +210,17 @@ def preprocess_measurements(measurements):
     measurements['PrSigmaM'] = LIGHTSPEED * 1e-9 * measurements['ReceivedSvTimeUncertaintyNanos']
     return measurements
 
-
 def calculate_satellite_position(ephemeris, transmit_time):
+    """
+    Calculates the satellite positions based on ephemeris data.
+
+    Args:
+        ephemeris (pd.DataFrame): DataFrame containing the ephemeris data.
+        transmit_time (pd.Series): Series containing the transmit times.
+
+    Returns:
+        pd.DataFrame: DataFrame containing the calculated satellite positions.
+    """
     mu = 3.986005e14
     OmegaDot_e = 7.2921151467e-5
     F = -4.442807633e-10
@@ -192,6 +277,16 @@ def calculate_satellite_position(ephemeris, transmit_time):
 
 #TODO : understand why the hell is not working.. :(
 def calculate_glonass_position(ephemeris, transmit_time):
+    """
+    Calculates the satellite positions for GLONASS based on ephemeris data.
+
+    Args:
+        ephemeris (pd.DataFrame): DataFrame containing the ephemeris data for GLONASS.
+        transmit_time (pd.Series): Series containing the transmit times.
+
+    Returns:
+        pd.DataFrame: DataFrame containing the calculated satellite positions.
+    """
     # Constants
     Omega_e = 7.2921151467e-5  # Earth's rotation rate in rad/s
     GLONASS_TIME_OFFSET = 3 * 3600  # 3 hours in seconds
@@ -226,8 +321,19 @@ def calculate_glonass_position(ephemeris, transmit_time):
 
     return sv_position
 
-
 def process_new_data(file_path, measurements, EphemManager, last_processed_time):
+    """
+    Processes new GNSS data from a file and updates the measurements DataFrame.
+
+    Args:
+        file_path (str): Path to the GNSS log file.
+        measurements (pd.DataFrame): DataFrame containing the existing measurements.
+        EphemManager (EphemerisManager): EphemerisManager object for fetching ephemeris data.
+        last_processed_time (datetime): Timestamp of the last processed measurement.
+
+    Returns:
+        datetime: Updated timestamp of the last processed measurement.
+    """
     try:
         unparsed_new_data = read_data(file_path)
         new_measurements = preprocess_measurements(unparsed_new_data)
@@ -334,9 +440,11 @@ def process_new_data(file_path, measurements, EphemManager, last_processed_time)
         traceback.print_exc()
         return last_processed_time
 
-
 def main():
-    #cleanup incase there are old files#
+    """
+    Main function that orchestrates the GNSS data processing and output generation.
+    """
+    # Cleanup in case there are old files
     old_csv_file = "gnss_measurements_output.csv"
     if os.path.exists(old_csv_file):
         os.remove(old_csv_file)
@@ -352,7 +460,7 @@ def main():
     last_checked_times = {}
     last_processed_time = None
 
-    #waiting for the initial file to be generated
+    # Waiting for the initial file to be generated
     initial_file = None
     while not initial_file:
         files = get_files_in_directory(directory_to_pull)
@@ -361,7 +469,7 @@ def main():
             initial_file = f'{directory_to_pull}/{files[0]}'
         else:
             print("Waiting for the initial file to be generated...")
-            time.sleep(5) 
+            time.sleep(5)
 
     # Initial setup
     initial_data = pull_file(initial_file)
@@ -369,8 +477,8 @@ def main():
     with open(destination_file, 'w') as file:
         file.write(initial_data)
 
-    unparsed_measurments = read_data(destination_file)
-    measurements = preprocess_measurements(unparsed_measurments)
+    unparsed_measurements = read_data(destination_file)
+    measurements = preprocess_measurements(unparsed_measurements)
     last_processed_time = measurements['UnixTime'].max()
     
     EphemManager = EphemerisManager()

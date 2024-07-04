@@ -1,3 +1,24 @@
+"""
+GNSS Data Processing Script
+
+This script processes GNSS log files to extract, preprocess, and analyze GNSS measurements. It performs various checks to
+ensure data quality, including AGC/CN0 checks, SVID sanity checks, cross-correlation checks, and time consistency checks.
+The script also calculates satellite positions and flags suspicious measurements (which might indicate on satellite spoofing, etc..)
+
+Functions:
+- parse_arguments(): Parses command-line arguments and gets the GNSS log file name from the user.
+- read_data(input_filepath): Reads GNSS log data from a CSV file.
+- preprocess_measurements(measurements): Preprocesses the raw GNSS measurements.
+- check_agc_cn0(measurements): Checks the AGC and C/N0 values for suspicious measurements.
+- check_svid_sanity(measurements, ephemeris): Checks the sanity of SVIDs in the measurements.
+- calculate_satellite_position(ephemeris, transmit_time): Calculates the satellite positions based on ephemeris data.
+- check_satellite_position(sv_position, receiver_position, max_distance_error): Checks the sanity of satellite positions.
+- check_time_consistency(measurements, max_time_error): Checks the time consistency of the measurements.
+- check_cross_correlation(measurements, correlation_threshold): Checks for high cross-correlation in the measurements.
+- main(): Main function that orchestrates the GNSS data processing.
+
+"""
+
 import traceback
 import os
 import csv
@@ -9,30 +30,42 @@ from gnssutils import EphemerisManager
 
 pd.options.mode.chained_assignment = None
 
-# TODO: logging?
-
 # Constants
 WEEKSEC = 604800
 LIGHTSPEED = 2.99792458e8
 GPS_EPOCH = datetime(1980, 1, 6, 0, 0, 0)
 
 def parse_arguments():
+    """
+    Parses command-line arguments and gets the GNSS log file name from the user.
+
+    Returns:
+        args (argparse.Namespace): Parsed command-line arguments including the data directory and input file.
+    """
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
 
-    # add --data_directory argument
+    # Add --data_directory argument
     parser.add_argument('--data_directory', type=str, help='Directory for ephemeris data', default=os.getcwd())
 
     args = parser.parse_args()
 
     # Get the input file name from the user
     input_file = input("Enter the GNSS log file name: ")
-
     args.input_file = input_file
 
     return args
 
 def read_data(input_filepath):
-    measurements, android_fixes= [], []
+    """
+    Reads GNSS log data from a CSV file.
+
+    Args:
+        input_filepath (str): Path to the input CSV file.
+
+    Returns:
+        pd.DataFrame: DataFrame containing the raw GNSS measurements.
+    """
+    measurements, android_fixes = [], []
     with open(input_filepath) as csvfile:
         reader = csv.reader(csvfile)
         for row in reader:
@@ -50,10 +83,20 @@ def read_data(input_filepath):
     return pd.DataFrame(measurements[1:], columns=measurements[0])
 
 def preprocess_measurements(measurements):
+    """
+    Preprocesses the raw GNSS measurements.
+
+    Args:
+        measurements (pd.DataFrame): DataFrame containing the raw GNSS measurements.
+
+    Returns:
+        pd.DataFrame: DataFrame containing the preprocessed GNSS measurements.
+    """
     # Format satellite IDs
     measurements.loc[measurements['Svid'].str.len() == 1, 'Svid'] = '0' + measurements['Svid']
     constellation_map = {
         '1': 'G',  # GPS
+        # Uncomment below lines to include other constellations
         #'3': 'R',  # GLONASS
         #'5': 'E',  # Galileo
         #'6': 'C',  # Beidou
@@ -61,12 +104,14 @@ def preprocess_measurements(measurements):
     measurements['Constellation'] = measurements['ConstellationType'].map(constellation_map)
     measurements['SvName'] = measurements['Constellation'] + measurements['Svid']
     measurements = measurements[measurements['Constellation'].isin(constellation_map.values())]
+
     # Convert columns to numeric representation and handle missing data robustly
     numeric_cols = ['Cn0DbHz', 'TimeNanos', 'FullBiasNanos', 'ReceivedSvTimeNanos',
                     'PseudorangeRateMetersPerSecond', 'ReceivedSvTimeUncertaintyNanos',
                     'BiasNanos', 'TimeOffsetNanos']
     for col in numeric_cols:
         measurements[col] = pd.to_numeric(measurements[col], errors='coerce').fillna(0)
+
     # Generate GPS and Unix timestamps
     measurements['GpsTimeNanos'] = measurements['TimeNanos'] - (measurements['FullBiasNanos'] - measurements['BiasNanos'])
     measurements['UnixTime'] = pd.to_datetime(measurements['GpsTimeNanos'], unit='ns', origin=GPS_EPOCH).dt.tz_localize('UTC')
@@ -76,8 +121,10 @@ def preprocess_measurements(measurements):
     time_diff = measurements['UnixTime'] - measurements['UnixTime'].shift()
     measurements.loc[time_diff > timedelta(milliseconds=200), 'Epoch'] = 1
     measurements['Epoch'] = measurements['Epoch'].cumsum()
-      # Ensure UnixTime is unique within each epoch
+
+    # Ensure UnixTime is unique within each epoch
     measurements['UnixTime'] = measurements.groupby('Epoch')['UnixTime'].transform(lambda x: x + pd.to_timedelta(range(len(x)), unit='ns'))
+
     # Calculations related to GNSS Nanos, week number, seconds, pseudorange
     measurements['tRxGnssNanos'] = measurements['TimeNanos'] + measurements['TimeOffsetNanos'] - \
                                    (measurements['FullBiasNanos'].iloc[0] + measurements['BiasNanos'].iloc[0])
@@ -85,12 +132,23 @@ def preprocess_measurements(measurements):
     measurements['tRxSeconds'] = 1e-9 * measurements['tRxGnssNanos'] - WEEKSEC * measurements['GpsWeekNumber']
     measurements['tTxSeconds'] = 1e-9 * (measurements['ReceivedSvTimeNanos'] + measurements['TimeOffsetNanos'])
     measurements['prSeconds'] = measurements['tRxSeconds'] - measurements['tTxSeconds']
+
     # Convert pseudorange from seconds to meters
     measurements['PrM'] = LIGHTSPEED * measurements['prSeconds']
     measurements['PrSigmaM'] = LIGHTSPEED * 1e-9 * measurements['ReceivedSvTimeUncertaintyNanos']
+    
     return measurements
 
 def check_agc_cn0(measurements):
+    """
+    Checks the AGC and C/N0 values for suspicious measurements.
+
+    Args:
+        measurements (pd.DataFrame): DataFrame containing the GNSS measurements.
+
+    Returns:
+        pd.DataFrame: DataFrame with additional columns indicating suspicious measurements.
+    """
     # Define thresholds
     AGC_THRESHOLD = 2.5  # This value should be adjusted based on your specific receiver
     CN0_THRESHOLD = 30  # dB-Hz, typical minimum for good signal quality
@@ -112,6 +170,16 @@ def check_agc_cn0(measurements):
     return measurements
 
 def check_svid_sanity(measurements, ephemeris):
+    """
+    Checks the sanity of SVIDs in the measurements.
+
+    Args:
+        measurements (pd.DataFrame): DataFrame containing the GNSS measurements.
+        ephemeris (pd.DataFrame): DataFrame containing the ephemeris data.
+
+    Returns:
+        pd.DataFrame: DataFrame with additional columns indicating SVID sanity checks.
+    """
     # Check if SVID exists in ephemeris data
     measurements['SVID_exists'] = measurements['SvName'].isin(ephemeris.index)
 
@@ -126,11 +194,21 @@ def check_svid_sanity(measurements, ephemeris):
     return measurements
 
 def calculate_satellite_position(ephemeris, transmit_time):
+    """
+    Calculates the satellite positions based on ephemeris data.
+
+    Args:
+        ephemeris (pd.DataFrame): DataFrame containing the ephemeris data.
+        transmit_time (pd.Series): Series containing the transmit times.
+
+    Returns:
+        pd.DataFrame: DataFrame containing the calculated satellite positions.
+    """
     mu = 3.986005e14
     OmegaDot_e = 7.2921151467e-5
     F = -4.442807633e-10
     sv_position = pd.DataFrame()
-    sv_position['sv']= ephemeris.index
+    sv_position['sv'] = ephemeris.index
     sv_position.set_index('sv', inplace=True)
     sv_position['t_k'] = transmit_time - ephemeris['t_oe']
     A = ephemeris['sqrtA'].pow(2)
@@ -152,7 +230,7 @@ def calculate_satellite_position(ephemeris, transmit_time):
     delT_oc = transmit_time - ephemeris['t_oc']
     sv_position['delT_sv'] = ephemeris['SVclockBias'] + ephemeris['SVclockDrift'] * delT_oc + ephemeris['SVclockDriftRate'] * delT_oc.pow(2)
 
-    v_k = np.arctan2(np.sqrt(1-ephemeris['e'].pow(2))*sinE_k,(cosE_k - ephemeris['e']))
+    v_k = np.arctan2(np.sqrt(1-ephemeris['e'].pow(2))*sinE_k, (cosE_k - ephemeris['e']))
 
     Phi_k = v_k + ephemeris['omega']
 
@@ -177,15 +255,37 @@ def calculate_satellite_position(ephemeris, transmit_time):
     sv_position['x_k'] = x_k_prime*np.cos(Omega_k) - y_k_prime*np.cos(i_k)*np.sin(Omega_k)
     sv_position['y_k'] = x_k_prime*np.sin(Omega_k) + y_k_prime*np.cos(i_k)*np.cos(Omega_k)
     sv_position['z_k'] = y_k_prime*np.sin(i_k)
-    return sv_position
     
+    return sv_position
+
 def check_satellite_position(sv_position, receiver_position, max_distance_error=1000):
+    """
+    Checks the sanity of satellite positions.
+
+    Args:
+        sv_position (pd.DataFrame): DataFrame containing the satellite positions.
+        receiver_position (tuple): Tuple containing the receiver position (x, y, z).
+        max_distance_error (int): Maximum allowed distance error in meters.
+
+    Returns:
+        pd.Series: Series indicating whether each satellite position is suspicious.
+    """
     rx = np.array(receiver_position)
     distances = np.sqrt(((sv_position[['x_k', 'y_k', 'z_k']] - rx)**2).sum(axis=1))
     max_theoretical_distance = 26600000  # Approx. max distance to a GPS satellite in meters
     return (distances > max_theoretical_distance + max_distance_error) | (distances < max_distance_error)
 
 def check_time_consistency(measurements, max_time_error=1):
+    """
+    Checks the time consistency of the measurements.
+
+    Args:
+        measurements (pd.DataFrame): DataFrame containing the GNSS measurements.
+        max_time_error (int): Maximum allowed time error in seconds.
+
+    Returns:
+        pd.Series: Series indicating whether each measurement is time-consistent.
+    """
     current_time = datetime.now(timezone.utc)
     
     # Ensure UnixTime is timezone-aware
@@ -196,6 +296,16 @@ def check_time_consistency(measurements, max_time_error=1):
     return time_diff > max_time_error
 
 def check_cross_correlation(measurements, correlation_threshold=0.95):
+    """
+    Checks for high cross-correlation in the measurements.
+
+    Args:
+        measurements (pd.DataFrame): DataFrame containing the GNSS measurements.
+        correlation_threshold (float): Threshold for identifying high cross-correlation.
+
+    Returns:
+        pd.Series: Series indicating whether each measurement is suspicious due to high cross-correlation.
+    """
     suspicious = pd.Series(False, index=measurements.index)
     
     for epoch in measurements['Epoch'].unique():
@@ -214,7 +324,10 @@ def check_cross_correlation(measurements, correlation_threshold=0.95):
     return suspicious
 
 def main():
-    #cleanup incase there are old files#
+    """
+    Main function that orchestrates the GNSS data processing.
+    """
+    # Cleanup in case there are old files
     old_csv_file = "gnss_measurements_output.csv"
     if os.path.exists(old_csv_file):
         os.remove(old_csv_file)
