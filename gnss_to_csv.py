@@ -26,14 +26,11 @@ import argparse
 from datetime import datetime, timedelta, timezone
 import pandas as pd
 import numpy as np
+
 from gnssutils import EphemerisManager
+from constants import WEEKSEC, LIGHTSPEED, GPS_EPOCH, MU, OMEGA_E_DOT
 
 pd.options.mode.chained_assignment = None
-
-# Constants
-WEEKSEC = 604800
-LIGHTSPEED = 2.99792458e8
-GPS_EPOCH = datetime(1980, 1, 6, 0, 0, 0)
 
 def parse_arguments():
     """
@@ -204,15 +201,13 @@ def calculate_satellite_position(ephemeris, transmit_time):
     Returns:
         pd.DataFrame: DataFrame containing the calculated satellite positions.
     """
-    mu = 3.986005e14
-    OmegaDot_e = 7.2921151467e-5
     F = -4.442807633e-10
     sv_position = pd.DataFrame()
     sv_position['sv'] = ephemeris.index
     sv_position.set_index('sv', inplace=True)
     sv_position['t_k'] = transmit_time - ephemeris['t_oe']
     A = ephemeris['sqrtA'].pow(2)
-    n_0 = np.sqrt(mu / A.pow(3))
+    n_0 = np.sqrt(MU / A.pow(3))
     n = n_0 + ephemeris['deltaN']
     M_k = ephemeris['M_0'] + n * sv_position['t_k']
     E_k = M_k
@@ -250,7 +245,7 @@ def calculate_satellite_position(ephemeris, transmit_time):
     x_k_prime = r_k*np.cos(u_k)
     y_k_prime = r_k*np.sin(u_k)
 
-    Omega_k = ephemeris['Omega_0'] + (ephemeris['OmegaDot'] - OmegaDot_e)*sv_position['t_k'] - OmegaDot_e*ephemeris['t_oe']
+    Omega_k = ephemeris['Omega_0'] + (ephemeris['OmegaDot'] - OMEGA_E_DOT)*sv_position['t_k'] - OMEGA_E_DOT*ephemeris['t_oe']
 
     sv_position['x_k'] = x_k_prime*np.cos(Omega_k) - y_k_prime*np.cos(i_k)*np.sin(Omega_k)
     sv_position['y_k'] = x_k_prime*np.sin(Omega_k) + y_k_prime*np.cos(i_k)*np.cos(Omega_k)

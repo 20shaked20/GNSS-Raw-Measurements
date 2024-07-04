@@ -7,16 +7,12 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import time
+
 from gnssutils import EphemerisManager
+from constants import WEEKSEC, GPS_EPOCH, MU, OMEGA_E_DOT, LIGHTSPEED, GLONASS_TIME_OFFSET
 
 pd.options.mode.chained_assignment = None
 
-# Constants
-WEEKSEC = 604800
-LIGHTSPEED = 2.99792458e8
-GPS_EPOCH = datetime(1980, 1, 6, 0, 0, 0)
-MU = 3.986005e14  # Earth's universal gravitational parameter
-OMEGA_E_DOT = 7.2921151467e-5  # Earth's rotation rate
 
 # Cache for satellite data
 satellite_cache = {}
@@ -221,8 +217,6 @@ def calculate_satellite_position(ephemeris, transmit_time):
     Returns:
         pd.DataFrame: DataFrame containing the calculated satellite positions.
     """
-    mu = 3.986005e14
-    OmegaDot_e = 7.2921151467e-5
     F = -4.442807633e-10
     sv_position = pd.DataFrame()
     sv_position['sv']= ephemeris.index
@@ -230,7 +224,7 @@ def calculate_satellite_position(ephemeris, transmit_time):
     sv_position['t_k'] = transmit_time - ephemeris['t_oe']
 
     A = ephemeris['sqrtA'].pow(2)
-    n_0 = np.sqrt(mu / A.pow(3))
+    n_0 = np.sqrt(MU / A.pow(3))
     n = n_0 + ephemeris['deltaN']
     M_k = ephemeris['M_0'] + n * sv_position['t_k']
     E_k = M_k
@@ -268,7 +262,7 @@ def calculate_satellite_position(ephemeris, transmit_time):
     x_k_prime = r_k*np.cos(u_k)
     y_k_prime = r_k*np.sin(u_k)
 
-    Omega_k = ephemeris['Omega_0'] + (ephemeris['OmegaDot'] - OmegaDot_e)*sv_position['t_k'] - OmegaDot_e*ephemeris['t_oe']
+    Omega_k = ephemeris['Omega_0'] + (ephemeris['OmegaDot'] - OMEGA_E_DOT)*sv_position['t_k'] - OMEGA_E_DOT*ephemeris['t_oe']
 
     sv_position['x_k'] = x_k_prime*np.cos(Omega_k) - y_k_prime*np.cos(i_k)*np.sin(Omega_k)
     sv_position['y_k'] = x_k_prime*np.sin(Omega_k) + y_k_prime*np.cos(i_k)*np.cos(Omega_k)
@@ -287,9 +281,6 @@ def calculate_glonass_position(ephemeris, transmit_time):
     Returns:
         pd.DataFrame: DataFrame containing the calculated satellite positions.
     """
-    # Constants
-    Omega_e = 7.2921151467e-5  # Earth's rotation rate in rad/s
-    GLONASS_TIME_OFFSET = 3 * 3600  # 3 hours in seconds
 
     # Initialize DataFrame to store satellite positions
     sv_position = pd.DataFrame()
@@ -308,7 +299,7 @@ def calculate_glonass_position(ephemeris, transmit_time):
     sv_position['z_k'] = ephemeris['Z'] + ephemeris['dZ'] * sv_position['t_k']
 
     # Apply Earth rotation correction
-    rotation_angle = Omega_e * sv_position['t_k']
+    rotation_angle = OMEGA_E_DOT * sv_position['t_k']
     cos_angle = np.cos(rotation_angle)
     sin_angle = np.sin(rotation_angle)
 
