@@ -2,7 +2,7 @@ import traceback
 import os
 import csv
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 import numpy as np
 from gnssutils import EphemerisManager
@@ -69,12 +69,15 @@ def preprocess_measurements(measurements):
         measurements[col] = pd.to_numeric(measurements[col], errors='coerce').fillna(0)
     # Generate GPS and Unix timestamps
     measurements['GpsTimeNanos'] = measurements['TimeNanos'] - (measurements['FullBiasNanos'] - measurements['BiasNanos'])
-    measurements['UnixTime'] = pd.to_datetime(measurements['GpsTimeNanos'], utc=True, origin=GPS_EPOCH)
+    measurements['UnixTime'] = pd.to_datetime(measurements['GpsTimeNanos'], unit='ns', origin=GPS_EPOCH).dt.tz_localize('UTC')
+
     # Identify epochs based on time gaps
     measurements['Epoch'] = 0
     time_diff = measurements['UnixTime'] - measurements['UnixTime'].shift()
     measurements.loc[time_diff > timedelta(milliseconds=200), 'Epoch'] = 1
     measurements['Epoch'] = measurements['Epoch'].cumsum()
+      # Ensure UnixTime is unique within each epoch
+    measurements['UnixTime'] = measurements.groupby('Epoch')['UnixTime'].transform(lambda x: x + pd.to_timedelta(range(len(x)), unit='ns'))
     # Calculations related to GNSS Nanos, week number, seconds, pseudorange
     measurements['tRxGnssNanos'] = measurements['TimeNanos'] + measurements['TimeOffsetNanos'] - \
                                    (measurements['FullBiasNanos'].iloc[0] + measurements['BiasNanos'].iloc[0])
@@ -85,6 +88,41 @@ def preprocess_measurements(measurements):
     # Convert pseudorange from seconds to meters
     measurements['PrM'] = LIGHTSPEED * measurements['prSeconds']
     measurements['PrSigmaM'] = LIGHTSPEED * 1e-9 * measurements['ReceivedSvTimeUncertaintyNanos']
+    return measurements
+
+def check_agc_cn0(measurements):
+    # Define thresholds
+    AGC_THRESHOLD = 2.5  # This value should be adjusted based on your specific receiver
+    CN0_THRESHOLD = 30  # dB-Hz, typical minimum for good signal quality
+
+    # Check AGC (assuming AGC data is available in the measurements)
+    if 'AgcDb' in measurements.columns:
+        # Convert AgcDb to numeric, replacing any non-convertible values with NaN
+        measurements['AgcDb'] = pd.to_numeric(measurements['AgcDb'], errors='coerce')
+        measurements['AGC_suspicious'] = measurements['AgcDb'] > AGC_THRESHOLD
+    else:
+        measurements['AGC_suspicious'] = False
+
+    # Check C/N0
+    measurements['CN0_suspicious'] = pd.to_numeric(measurements['Cn0DbHz'], errors='coerce') < CN0_THRESHOLD
+
+    # Flag suspicious measurements
+    measurements['suspicious'] = measurements['AGC_suspicious'] | measurements['CN0_suspicious']
+
+    return measurements
+
+def check_svid_sanity(measurements, ephemeris):
+    # Check if SVID exists in ephemeris data
+    measurements['SVID_exists'] = measurements['SvName'].isin(ephemeris.index)
+
+    # Check for duplicate SVIDs
+    svid_counts = measurements.groupby('Epoch')['SvName'].value_counts()
+    duplicate_svids = svid_counts[svid_counts > 1].index.get_level_values('SvName')
+    measurements['SVID_duplicate'] = measurements['SvName'].isin(duplicate_svids)
+
+    # Flag suspicious measurements
+    measurements['suspicious'] |= ~measurements['SVID_exists'] | measurements['SVID_duplicate']
+
     return measurements
 
 def calculate_satellite_position(ephemeris, transmit_time):
@@ -141,6 +179,47 @@ def calculate_satellite_position(ephemeris, transmit_time):
     sv_position['z_k'] = y_k_prime*np.sin(i_k)
     return sv_position
     
+def check_satellite_position(sv_position, receiver_position, max_distance_error=1000):
+    """
+    Check if the calculated satellite position is within a reasonable range of the receiver.
+    
+    :param sv_position: DataFrame containing satellite positions
+    :param receiver_position: Approximate receiver position (x, y, z) in ECEF coordinates
+    :param max_distance_error: Maximum allowed distance error in meters
+    :return: Series indicating if each satellite's position is suspicious
+    """
+    rx = np.array(receiver_position)
+    distances = np.sqrt(((sv_position[['x_k', 'y_k', 'z_k']] - rx)**2).sum(axis=1))
+    max_theoretical_distance = 26600000  # Approx. max distance to a GPS satellite in meters
+    return (distances > max_theoretical_distance + max_distance_error) | (distances < max_distance_error)
+
+def check_time_consistency(measurements, max_time_error=1):
+    current_time = datetime.now(timezone.utc)
+    
+    # Ensure UnixTime is timezone-aware
+    if measurements['UnixTime'].dt.tz is None:
+        measurements['UnixTime'] = measurements['UnixTime'].dt.tz_localize('UTC')
+    
+    time_diff = (current_time - measurements['UnixTime']).dt.total_seconds().abs()
+    return time_diff > max_time_error
+
+def check_cross_correlation(measurements, correlation_threshold=0.95):
+    suspicious = pd.Series(False, index=measurements.index)
+    
+    for epoch in measurements['Epoch'].unique():
+        epoch_data = measurements[measurements['Epoch'] == epoch]
+        
+        epoch_data['UniqueID'] = epoch_data['UnixTime'].astype(str) + '_' + epoch_data['SvName']
+        pivot_data = epoch_data.pivot(index='UniqueID', columns='SvName', values='PrM')
+        
+        # Calculate correlation matrix only if there are at least 2 columns (satellites)
+        if pivot_data.shape[1] >= 2:
+            corr_matrix = pivot_data.corr()
+            high_corr = (corr_matrix.abs() > correlation_threshold) & (corr_matrix.abs() < 1.0)
+            suspicious_sats = high_corr.index[high_corr.any()]
+            suspicious.loc[epoch_data.index] |= epoch_data['SvName'].isin(suspicious_sats)
+    
+    return suspicious
 
 def main():
     #cleanup incase there are old files#
@@ -152,9 +231,14 @@ def main():
     # TODO: add cleanup of existing igs & nasa folders
     unparsed_measurements = read_data(args.input_file)
     measurements = preprocess_measurements(unparsed_measurements)
+    measurements = check_agc_cn0(measurements)
+
+    # Perform cross-correlation check
+    measurements['corr_suspicious'] = check_cross_correlation(measurements)
     print(args.data_directory)
     manager = EphemerisManager(args.data_directory)
         
+    receiver_position = (0, 0, 0)  # Earth's center as a fallback
     csv_output = []
     for epoch in measurements['Epoch'].unique():
         one_epoch = measurements.loc[(measurements['Epoch'] == epoch) & (measurements['prSeconds'] < 0.1)] 
@@ -165,6 +249,7 @@ def main():
             # Calculating satellite positions (ECEF)
             sats = one_epoch.index.unique().tolist()
             ephemeris = manager.get_ephemeris(timestamp, sats)
+            one_epoch = check_svid_sanity(one_epoch.reset_index(), ephemeris).set_index('SvName')
             sv_position = calculate_satellite_position(ephemeris, one_epoch['tTxSeconds'])
 
             # Apply satellite clock bias to correct the measured pseudorange values
@@ -191,7 +276,9 @@ def main():
                     "SatZ": sv_position.at[sv, 'z_k'] if sv in sv_position.index else np.nan,
                     "Pseudo-Range": one_epoch.at[sv, 'PrM_corrected'],
                     "CN0": one_epoch.at[sv, 'Cn0DbHz'],
-                    "Doppler": one_epoch.at[sv, 'DopplerShiftHz'] if doppler_calculated else 'NaN'
+                    "Doppler": one_epoch.at[sv, 'DopplerShiftHz'] if doppler_calculated else 'NaN',
+                    "Suspicious": (one_epoch.at[sv, 'suspicious'] | 
+                                   one_epoch.at[sv, 'corr_suspicious'])
                 })
             
     # TODO: file name should be more similar to input file name
