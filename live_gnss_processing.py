@@ -1,85 +1,44 @@
-import subprocess
 import os
 import csv
 import argparse
 import traceback
-from datetime import datetime, timedelta
+from datetime import timedelta
 import pandas as pd
 import numpy as np
 import time
+
 from gnssutils import EphemerisManager
+from android_adb_utils import *
+from constants import WEEKSEC, GPS_EPOCH, MU, OMEGA_E_DOT, LIGHTSPEED, GLONASS_TIME_OFFSET
 
 pd.options.mode.chained_assignment = None
-
-# Constants
-WEEKSEC = 604800
-LIGHTSPEED = 2.99792458e8
-GPS_EPOCH = datetime(1980, 1, 6, 0, 0, 0)
-MU = 3.986005e14  # Earth's universal gravitational parameter
-OMEGA_E_DOT = 7.2921151467e-5  # Earth's rotation rate
 
 # Cache for satellite data
 satellite_cache = {}
 seen_satellites = set()
 
-#TODO: make the ADB commands outside file that we can use, instead on this one 
-def run_adb_command(command):
-    result = subprocess.run(['android_platform_tools/adb'] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if result.returncode != 0:
-        raise Exception(f"Command failed with error: {result.stderr}")
-    return result.stdout
-
-def get_files_in_directory(directory):
-    list_command = ['shell', 'ls', directory]
-    try:
-        files = run_adb_command(list_command).splitlines()
-        return files
-    except Exception as e:
-        print(f"Error getting files in directory: {e}")
-        return []
-
-def append_new_data(file_path, new_data):
-    try:
-        with open(file_path, 'a') as file:
-            file.write(new_data)
-    except Exception as e:
-        print(f"Error appending new data: {e}")
-
-def read_existing_file(file_path):
-    if os.path.exists(file_path):
-        try:
-            with open(file_path, 'r') as file:
-                return file.read()
-        except Exception as e:
-            print(f"Error reading existing file: {e}")
-            return ""
-    return ""
-
-def delete_files_in_directory(directory):
-    try:
-        files = get_files_in_directory(directory)
-        for file in files:
-            file_to_delete = f'{directory}/{file}'
-            delete_command = ['shell', 'rm', file_to_delete]
-            run_adb_command(delete_command)
-            print(f"Deleted {file_to_delete}")
-    except Exception as e:
-        print(f"Error deleting files in directory: {e}")
-
-def pull_file(file_to_pull):
-    pull_command = ['shell', 'cat', file_to_pull]
-    new_data = run_adb_command(pull_command)
-    return new_data
-
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-
 def parse_arguments():
+    """
+    Parses command-line arguments for the script.
+
+    Returns:
+        argparse.Namespace: Parsed arguments.
+    """
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
     parser.add_argument('--data_directory', type=str, help='Directory for ephemeris data', default=os.getcwd())
     args = parser.parse_args()
     return args
 
 def read_data(input_filepath):
+    """
+    Reads GNSS data from a CSV file.
+
+    Args:
+        input_filepath (str): Path to the input CSV file.
+
+    Returns:
+        pd.DataFrame: DataFrame containing the GNSS measurements.
+    """
     measurements, android_fixes = [], []
     with open(input_filepath) as csvfile:
         reader = csv.reader(csvfile)
@@ -97,6 +56,15 @@ def read_data(input_filepath):
     return pd.DataFrame(measurements[1:], columns=measurements[0])
 
 def preprocess_measurements(measurements):
+    """
+    Preprocesses the GNSS measurements.
+
+    Args:
+        measurements (pd.DataFrame): DataFrame containing the raw GNSS measurements.
+
+    Returns:
+        pd.DataFrame: Preprocessed GNSS measurements.
+    """
     # Format satellite IDs
     measurements.loc[measurements['Svid'].str.len() == 1, 'Svid'] = '0' + measurements['Svid']
     constellation_map = {
@@ -134,10 +102,17 @@ def preprocess_measurements(measurements):
     measurements['PrSigmaM'] = LIGHTSPEED * 1e-9 * measurements['ReceivedSvTimeUncertaintyNanos']
     return measurements
 
-
 def calculate_satellite_position(ephemeris, transmit_time):
-    mu = 3.986005e14
-    OmegaDot_e = 7.2921151467e-5
+    """
+    Calculates the satellite positions based on ephemeris data.
+
+    Args:
+        ephemeris (pd.DataFrame): DataFrame containing the ephemeris data.
+        transmit_time (pd.Series): Series containing the transmit times.
+
+    Returns:
+        pd.DataFrame: DataFrame containing the calculated satellite positions.
+    """
     F = -4.442807633e-10
     sv_position = pd.DataFrame()
     sv_position['sv']= ephemeris.index
@@ -145,7 +120,7 @@ def calculate_satellite_position(ephemeris, transmit_time):
     sv_position['t_k'] = transmit_time - ephemeris['t_oe']
 
     A = ephemeris['sqrtA'].pow(2)
-    n_0 = np.sqrt(mu / A.pow(3))
+    n_0 = np.sqrt(MU / A.pow(3))
     n = n_0 + ephemeris['deltaN']
     M_k = ephemeris['M_0'] + n * sv_position['t_k']
     E_k = M_k
@@ -183,7 +158,7 @@ def calculate_satellite_position(ephemeris, transmit_time):
     x_k_prime = r_k*np.cos(u_k)
     y_k_prime = r_k*np.sin(u_k)
 
-    Omega_k = ephemeris['Omega_0'] + (ephemeris['OmegaDot'] - OmegaDot_e)*sv_position['t_k'] - OmegaDot_e*ephemeris['t_oe']
+    Omega_k = ephemeris['Omega_0'] + (ephemeris['OmegaDot'] - OMEGA_E_DOT)*sv_position['t_k'] - OMEGA_E_DOT*ephemeris['t_oe']
 
     sv_position['x_k'] = x_k_prime*np.cos(Omega_k) - y_k_prime*np.cos(i_k)*np.sin(Omega_k)
     sv_position['y_k'] = x_k_prime*np.sin(Omega_k) + y_k_prime*np.cos(i_k)*np.cos(Omega_k)
@@ -192,9 +167,16 @@ def calculate_satellite_position(ephemeris, transmit_time):
 
 #TODO : understand why the hell is not working.. :(
 def calculate_glonass_position(ephemeris, transmit_time):
-    # Constants
-    Omega_e = 7.2921151467e-5  # Earth's rotation rate in rad/s
-    GLONASS_TIME_OFFSET = 3 * 3600  # 3 hours in seconds
+    """
+    Calculates the satellite positions for GLONASS based on ephemeris data.
+
+    Args:
+        ephemeris (pd.DataFrame): DataFrame containing the ephemeris data for GLONASS.
+        transmit_time (pd.Series): Series containing the transmit times.
+
+    Returns:
+        pd.DataFrame: DataFrame containing the calculated satellite positions.
+    """
 
     # Initialize DataFrame to store satellite positions
     sv_position = pd.DataFrame()
@@ -213,7 +195,7 @@ def calculate_glonass_position(ephemeris, transmit_time):
     sv_position['z_k'] = ephemeris['Z'] + ephemeris['dZ'] * sv_position['t_k']
 
     # Apply Earth rotation correction
-    rotation_angle = Omega_e * sv_position['t_k']
+    rotation_angle = OMEGA_E_DOT * sv_position['t_k']
     cos_angle = np.cos(rotation_angle)
     sin_angle = np.sin(rotation_angle)
 
@@ -226,8 +208,19 @@ def calculate_glonass_position(ephemeris, transmit_time):
 
     return sv_position
 
-
 def process_new_data(file_path, measurements, EphemManager, last_processed_time):
+    """
+    Processes new GNSS data from a file and updates the measurements DataFrame.
+
+    Args:
+        file_path (str): Path to the GNSS log file.
+        measurements (pd.DataFrame): DataFrame containing the existing measurements.
+        EphemManager (EphemerisManager): EphemerisManager object for fetching ephemeris data.
+        last_processed_time (datetime): Timestamp of the last processed measurement.
+
+    Returns:
+        datetime: Updated timestamp of the last processed measurement.
+    """
     try:
         unparsed_new_data = read_data(file_path)
         new_measurements = preprocess_measurements(unparsed_new_data)
@@ -267,26 +260,30 @@ def process_new_data(file_path, measurements, EphemManager, last_processed_time)
 
                 # Combine cached satellite data with new data
                 cached_data = pd.concat(satellite_cache.values())
+                sv_position = calculate_satellite_position(cached_data, one_epoch['tTxSeconds'])
 
-                # Separate by constellation type
-                gps_ephemeris = cached_data[cached_data['ConstellationType'] == "G"]
-                glonass_ephemeris = cached_data[cached_data['ConstellationType'] == "R"]
+                """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+                # TODO:(not working for now)
+                # Separate by constellation type 
+                # gps_ephemeris = cached_data[cached_data['ConstellationType'] == "G"]
+                # glonass_ephemeris = cached_data[cached_data['ConstellationType'] == "R"]
 
-                gps_sv_position = pd.DataFrame()
-                glonass_sv_position = pd.DataFrame()
+                # gps_sv_position = pd.DataFrame()
+                # glonass_sv_position = pd.DataFrame()
 
-                # Separate transmit times by constellation type
-                gps_transmit_times = one_epoch[one_epoch['ConstellationType'] == 'G']['tTxSeconds']
-                glonass_transmit_times = one_epoch[one_epoch['ConstellationType'] == 'R']['tTxSeconds']
+                # # Separate transmit times by constellation type
+                # gps_transmit_times = one_epoch[one_epoch['ConstellationType'] == 'G']['tTxSeconds']
+                # glonass_transmit_times = one_epoch[one_epoch['ConstellationType'] == 'R']['tTxSeconds']
 
-                if not gps_ephemeris.empty and not gps_transmit_times.empty:
-                    gps_sv_position = calculate_satellite_position(gps_ephemeris, gps_transmit_times)
+                # if not gps_ephemeris.empty and not gps_transmit_times.empty:
+                #     gps_sv_position = calculate_satellite_position(gps_ephemeris, gps_transmit_times)
 
-                if not glonass_ephemeris.empty and not glonass_transmit_times.empty:
-                    glonass_sv_position = calculate_glonass_position(glonass_ephemeris, glonass_transmit_times)
+                # if not glonass_ephemeris.empty and not glonass_transmit_times.empty:
+                #     glonass_sv_position = calculate_glonass_position(glonass_ephemeris, glonass_transmit_times)
 
                 # Combine GPS and GLONASS positions
-                sv_position = pd.concat([gps_sv_position, glonass_sv_position])
+                # sv_position = pd.concat([gps_sv_position, glonass_sv_position])
+                """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
                 # Apply satellite clock bias to correct the measured pseudorange values
                 # Ensure sv_position's index matches one_epoch's index
@@ -330,9 +327,11 @@ def process_new_data(file_path, measurements, EphemManager, last_processed_time)
         traceback.print_exc()
         return last_processed_time
 
-
 def main():
-    #cleanup incase there are old files#
+    """
+    Main function that orchestrates the GNSS data processing and output generation.
+    """
+    # Cleanup in case there are old files
     old_csv_file = "gnss_measurements_output.csv"
     if os.path.exists(old_csv_file):
         os.remove(old_csv_file)
@@ -348,7 +347,7 @@ def main():
     last_checked_times = {}
     last_processed_time = None
 
-    #waiting for the initial file to be generated
+    # Waiting for the initial file to be generated
     initial_file = None
     while not initial_file:
         files = get_files_in_directory(directory_to_pull)
@@ -357,7 +356,7 @@ def main():
             initial_file = f'{directory_to_pull}/{files[0]}'
         else:
             print("Waiting for the initial file to be generated...")
-            time.sleep(5) 
+            time.sleep(5)
 
     # Initial setup
     initial_data = pull_file(initial_file)
@@ -365,8 +364,8 @@ def main():
     with open(destination_file, 'w') as file:
         file.write(initial_data)
 
-    unparsed_measurments = read_data(destination_file)
-    measurements = preprocess_measurements(unparsed_measurments)
+    unparsed_measurements = read_data(destination_file)
+    measurements = preprocess_measurements(unparsed_measurements)
     last_processed_time = measurements['UnixTime'].max()
     
     EphemManager = EphemerisManager()

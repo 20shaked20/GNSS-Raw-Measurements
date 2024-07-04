@@ -4,7 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const bodyParser = require('body-parser');
 const fs = require('fs');
-const { spawn } = require('child_process'); 
+const { spawn, execSync } = require('child_process'); 
 
 
 const app = express();
@@ -38,7 +38,7 @@ app.post('/run-gnss', (req, res) => {
     return;
   }
   
-  const pythonExecutable = path.join(__dirname, '../.venv/Scripts/python'); // Adjust as necessary
+  const pythonExecutable = execSync('python3 -c "import sys; print(sys.executable)"').toString().trim();
   const process = spawn(pythonExecutable, ['gnss_processing.py'], { cwd: path.join(__dirname, '../') });
   const filePath = path.join(__dirname, '../data', logFileName);
   
