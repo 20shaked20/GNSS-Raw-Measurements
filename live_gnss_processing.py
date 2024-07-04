@@ -267,26 +267,30 @@ def process_new_data(file_path, measurements, EphemManager, last_processed_time)
 
                 # Combine cached satellite data with new data
                 cached_data = pd.concat(satellite_cache.values())
+                sv_position = calculate_satellite_position(cached_data, one_epoch['tTxSeconds'])
 
-                # Separate by constellation type
-                gps_ephemeris = cached_data[cached_data['ConstellationType'] == "G"]
-                glonass_ephemeris = cached_data[cached_data['ConstellationType'] == "R"]
+                """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+                # TODO:(not working for now)
+                # Separate by constellation type 
+                # gps_ephemeris = cached_data[cached_data['ConstellationType'] == "G"]
+                # glonass_ephemeris = cached_data[cached_data['ConstellationType'] == "R"]
 
-                gps_sv_position = pd.DataFrame()
-                glonass_sv_position = pd.DataFrame()
+                # gps_sv_position = pd.DataFrame()
+                # glonass_sv_position = pd.DataFrame()
 
-                # Separate transmit times by constellation type
-                gps_transmit_times = one_epoch[one_epoch['ConstellationType'] == 'G']['tTxSeconds']
-                glonass_transmit_times = one_epoch[one_epoch['ConstellationType'] == 'R']['tTxSeconds']
+                # # Separate transmit times by constellation type
+                # gps_transmit_times = one_epoch[one_epoch['ConstellationType'] == 'G']['tTxSeconds']
+                # glonass_transmit_times = one_epoch[one_epoch['ConstellationType'] == 'R']['tTxSeconds']
 
-                if not gps_ephemeris.empty and not gps_transmit_times.empty:
-                    gps_sv_position = calculate_satellite_position(gps_ephemeris, gps_transmit_times)
+                # if not gps_ephemeris.empty and not gps_transmit_times.empty:
+                #     gps_sv_position = calculate_satellite_position(gps_ephemeris, gps_transmit_times)
 
-                if not glonass_ephemeris.empty and not glonass_transmit_times.empty:
-                    glonass_sv_position = calculate_glonass_position(glonass_ephemeris, glonass_transmit_times)
+                # if not glonass_ephemeris.empty and not glonass_transmit_times.empty:
+                #     glonass_sv_position = calculate_glonass_position(glonass_ephemeris, glonass_transmit_times)
 
                 # Combine GPS and GLONASS positions
-                sv_position = pd.concat([gps_sv_position, glonass_sv_position])
+                # sv_position = pd.concat([gps_sv_position, glonass_sv_position])
+                """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
                 # Apply satellite clock bias to correct the measured pseudorange values
                 # Ensure sv_position's index matches one_epoch's index
