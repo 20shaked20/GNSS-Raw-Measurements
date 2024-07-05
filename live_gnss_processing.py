@@ -52,8 +52,8 @@ def process_new_data(file_path, measurements, EphemManager, last_processed_time)
     try:
         unparsed_new_data = read_data(file_path)
         new_measurements = preprocess_measurements(unparsed_new_data)
-        measurements = check_agc_cn0(measurements)
-        measurements['corr_suspicious'] = check_cross_correlation(measurements)
+        new_measurements = check_agc_cn0(new_measurements)
+        new_measurements['corr_suspicious'] = check_cross_correlation(new_measurements)
         new_measurements = new_measurements[new_measurements['UnixTime'] > last_processed_time]
 
         if new_measurements.empty:
@@ -173,7 +173,7 @@ def main():
     if os.path.exists(old_init_gnss):
         os.remove(old_init_gnss)
     
-    directory_to_pull = '/storage/emulated/0/Android/data/com.android.gpstest/files/gnss_log'
+    directory_to_pull = '/storage/emulated/0/Android/data/com.android.gpstest/files/gnss_log/'
     destination = './'
     delete_files_in_directory(directory_to_pull)
 
