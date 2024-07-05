@@ -1,4 +1,3 @@
-// server/server.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -8,6 +7,8 @@ const { spawn, execSync } = require('child_process');
 
 const app = express();
 const PORT = 5000;
+
+let liveProcess = null;
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -69,23 +70,37 @@ app.post('/run-gnss', (req, res) => {
 
 app.post('/run-live-gnss', (req, res) => {
   const pythonExecutable = execSync('python3 -c "import sys; print(sys.executable)"').toString().trim();
-  const process = spawn(pythonExecutable, ['live_gnss_processing.py'], { cwd: path.join(__dirname, '../') });
+  liveProcess = spawn(pythonExecutable, ['live_gnss_processing.py'], { cwd: path.join(__dirname, '../') });
 
-  process.stdout.on('data', (data) => {
+  liveProcess.stdout.on('data', (data) => {
     console.log(`stdout: ${data}`);
   });
 
-  process.stderr.on('data', (data) => {
+  liveProcess.stderr.on('data', (data) => {
     console.error(`stderr: ${data}`);
   });
 
-  process.on('close', (code) => {
+  liveProcess.on('close', (code) => {
     if (code !== 0) {
-      res.status(500).json({ error: `live_gnss_processing.py process exited with code ${code}` });
-    } else {
-      res.json({ message: 'Live processing completed successfully' });
+      console.error(`live_gnss_processing.py process exited with code ${code}`);
     }
   });
+
+  res.json({ message: 'Live processing started' });
+});
+
+app.post('/stop-live-gnss', (req, res) => {
+  if (liveProcess) {
+    liveProcess.kill();
+    liveProcess = null;
+    res.json({ message: 'Live processing stopped' });
+  } else {
+    res.status(400).json({ error: 'No live processing running' });
+  }
+});
+
+app.get('/live-kml', (req, res) => {
+  res.sendFile(path.join(__dirname, '../gnss_visualization.kml'));
 });
 
 app.listen(PORT, () => {

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import CSVReaderComponent from './CSVReader';
 
-const LogFileSelector = () => {
+const LogFileSelector = ({ onStartLiveProcessing, onStopLiveProcessing }) => {
   const [logFiles, setLogFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState('');
   const [processingMode, setProcessingMode] = useState('online');
@@ -30,12 +30,23 @@ const LogFileSelector = () => {
     try {
       if (processingMode === 'online') {
         await axios.post('http://localhost:5000/run-live-gnss');
+        onStartLiveProcessing();
       } else if (processingMode === 'offline' && selectedFile) {
         await axios.post('http://localhost:5000/run-gnss', { fileName: selectedFile });
       }
       alert('Processing started');
     } catch (error) {
       console.error('Error running processing:', error);
+    }
+  };
+
+  const handleStopProcessing = async () => {
+    try {
+      await axios.post('http://localhost:5000/stop-live-gnss');
+      onStopLiveProcessing();
+      alert('Processing stopped');
+    } catch (error) {
+      console.error('Error stopping processing:', error);
     }
   };
 
@@ -78,6 +89,9 @@ const LogFileSelector = () => {
       )}
 
       <button onClick={handleRunProcessing}>Run Processing</button>
+      {processingMode === 'online' && (
+        <button onClick={handleStopProcessing}>Stop Processing</button>
+      )}
 
       {(processingMode === 'online' || (processingMode === 'offline' && selectedFile)) && (
         <CSVReaderComponent />
