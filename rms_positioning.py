@@ -1,24 +1,3 @@
-"""
-GNSS Data Processing Script
-
-This script processes multi-GNSS CSV log files for positioning and spoofing detection. It includes functions to read GNSS data,
-perform positioning calculations, detect spoofing, and output results in various formats including KML and text files.
-
-Functions:
-- parse_arguments(): Parses command-line arguments for input and output file paths.
-- read_gnss_data(filepath): Reads GNSS data from a CSV file into a pandas DataFrame.
-- positioning_function(x, sat_positions, observed_pseudoranges, weights): Calculates residuals between observed and estimated pseudoranges.
-- raim_algorithm(sat_positions, pseudoranges, weights, confidence_level): Performs Receiver Autonomous Integrity Monitoring (RAIM) to detect faults.
-- solve_position_and_compute_rms(sat_positions, pseudoranges, weights): Solves for receiver position and computes RMS error.
-- ecef_to_lla(ecef_coords): Converts ECEF coordinates to LLA (Latitude, Longitude, Altitude).
-- detect_spoofing(group, residuals, rms, lla): Detects spoofing based on RMS error and satellite data consistency.
-- process_epoch(gps_time, group, kml, previous_position): Processes data for a single epoch to compute position and detect spoofing.
-- process_satellite_data(data, kml_output_path): Processes GNSS data and generates KML visualization.
-- save_results_to_text(results, output_txt): Saves RMS results and spoofing information to a text file.
-- add_position_data_to_csv(results, input_csv, output_csv): Adds computed position data to the original CSV file.
-
-"""
-
 import argparse
 import traceback
 import pandas as pd
@@ -61,27 +40,38 @@ def positioning_function(x, sat_positions, observed_pseudoranges, weights):
     """
     Calculates residuals between observed and estimated pseudoranges.
 
+    The function computes the residuals (differences) between the observed pseudoranges (the distances
+    measured from the receiver to each satellite) and the estimated pseudoranges (calculated based
+    on the estimated position of the receiver). It then returns these residuals weighted by the
+    reliability of each measurement.
+
     Args:
-        x (np.array): Estimated receiver position.
-        sat_positions (np.array): Array of satellite positions.
+        x (np.array): Estimated receiver position (3D coordinates).
+        sat_positions (np.array): Array of satellite positions (3D coordinates).
         observed_pseudoranges (np.array): Array of observed pseudoranges.
         weights (np.array): Array of weights for each satellite measurement.
 
     Returns:
         np.array: Weighted residuals.
     """
+    # Calculate the estimated pseudoranges based on the current estimate of the receiver position.
     estimated_ranges = np.sqrt(((sat_positions - x)**2).sum(axis=1))
+    
+    # Compute the residuals (differences) between the observed pseudoranges and the estimated pseudoranges.
     residuals = estimated_ranges - observed_pseudoranges
+    
+    # Return the weighted residuals to account for the reliability of each measurement.
     return weights * residuals
 
-#TODO: better naming here
 def raim_algorithm(sat_positions, pseudoranges, weights, confidence_level=0.95):
     """
     Performs Receiver Autonomous Integrity Monitoring (RAIM) to detect faults in satellite measurements.
-    https://en.wikipedia.org/wiki/Receiver_autonomous_integrity_monitoring
+
+    RAIM aims to improve the reliability of GNSS by identifying and excluding faulty satellite measurements.
+    It compares the residuals of pseudoranges to a statistical threshold to detect outliers.
 
     Args:
-        sat_positions (np.array): Array of satellite positions.
+        sat_positions (np.array): Array of satellite positions (3D coordinates).
         pseudoranges (np.array): Array of observed pseudoranges.
         weights (np.array): Array of weights for each satellite measurement.
         confidence_level (float): Confidence level for RAIM detection.
@@ -90,20 +80,27 @@ def raim_algorithm(sat_positions, pseudoranges, weights, confidence_level=0.95):
         tuple: Estimated receiver position and list of excluded satellites.
     """
     num_satellites = len(sat_positions)
-    degrees_of_freedom = num_satellites - 4
+    degrees_of_freedom = num_satellites - 4  # 4 parameters: x, y, z, and receiver clock bias
     threshold = chi2.ppf(confidence_level, degrees_of_freedom)
 
-    # Initial position calculation
+    # Initial position calculation using the mean of satellite positions as a guess.
     initial_guess = np.mean(sat_positions, axis=0)
+    
+    # Perform least squares optimization to minimize the residuals and find the best estimate of the receiver's position.
     res = least_squares(positioning_function, initial_guess, args=(sat_positions, pseudoranges, weights))
     position = res.x
+    
+    # Calculate residuals and test statistic for the initial solution.
     residuals = positioning_function(position, sat_positions, pseudoranges, weights)
     test_statistic = np.sum(residuals**2)
 
+    # If the test statistic is below the threshold, no satellites are excluded.
     if test_statistic < threshold:
         return position, []
 
     excluded_satellites = []
+    
+    # Try excluding each satellite one by one to see if the test statistic improves.
     for i in range(len(sat_positions)):
         temp_sat_positions = np.delete(sat_positions, i, axis=0)
         temp_pseudoranges = np.delete(pseudoranges, i)
@@ -119,9 +116,36 @@ def raim_algorithm(sat_positions, pseudoranges, weights, confidence_level=0.95):
 
     return position, excluded_satellites
 
+def robust_positioning_function(x, sat_positions, observed_pseudoranges, weights):
+    """
+    Calculates residuals between observed and estimated pseudoranges with robust weighting.
+
+    This function is similar to the `positioning_function` but includes an additional term to account for the
+    receiver clock bias. It provides a more robust estimation by considering the bias.
+
+    Args:
+        x (np.array): Estimated receiver position and clock bias.
+        sat_positions (np.array): Array of satellite positions.
+        observed_pseudoranges (np.array): Array of observed pseudoranges.
+        weights (np.array): Array of weights for each satellite measurement.
+
+    Returns:
+        np.array: Weighted residuals.
+    """
+    # Calculate the estimated pseudoranges including the receiver clock bias.
+    estimated_ranges = np.sqrt(((sat_positions - x[:3])**2).sum(axis=1))
+    residuals = estimated_ranges + x[3] - observed_pseudoranges  # Including receiver clock bias
+    
+    # Return the weighted residuals.
+    return weights * residuals
+
 def solve_position_and_compute_rms(sat_positions, pseudoranges, weights):
     """
-    Solves for receiver position and computes RMS error of pseudoranges.
+    Solves for receiver position and computes RMS error of pseudoranges with an improved algorithm.
+
+    This function iteratively refines the position estimate and adjusts the weights of the satellite measurements
+    to reduce the influence of outliers. It computes the root mean square (RMS) error of the pseudoranges to
+    assess the quality of the solution.
 
     Args:
         sat_positions (np.array): Array of satellite positions.
@@ -129,15 +153,34 @@ def solve_position_and_compute_rms(sat_positions, pseudoranges, weights):
         weights (np.array): Array of weights for each satellite measurement.
 
     Returns:
-        tuple: Estimated receiver position, RMS error, and list of excluded satellites.
+        tuple: Estimated receiver position, RMS error, clock bias, and list of excluded satellites.
     """
     if not (np.all(np.isfinite(sat_positions)) and np.all(np.isfinite(pseudoranges))):
         raise ValueError("Satellite positions and pseudoranges must be finite.")
+
+    # Initial guess using weighted average of satellite positions.
+    initial_guess = np.average(sat_positions, axis=0, weights=weights)
+    initial_guess = np.append(initial_guess, 0)  # Including receiver clock bias
     
-    position, excluded_satellites = raim_algorithm(sat_positions, pseudoranges, weights)
-    residuals = positioning_function(position, sat_positions, pseudoranges, weights)
+    # Iterative least squares with robust outlier detection.
+    for _ in range(5):  # Iterative refinement
+        res = least_squares(robust_positioning_function, initial_guess, args=(sat_positions, pseudoranges, weights))
+        position = res.x[:3]
+        clock_bias = res.x[3]
+        residuals = robust_positioning_function(res.x, sat_positions, pseudoranges, weights)
+        
+        # Detect outliers based on residuals.
+        z_scores = np.abs((residuals - np.mean(residuals)) / np.std(residuals))
+        outliers = z_scores > 3  # Outlier threshold
+        
+        # Recalculate weights to reduce the influence of outliers.
+        weights[outliers] *= 0.1
+        initial_guess = res.x  # Update guess for next iteration
+
     rms = np.sqrt(np.mean(residuals**2))
-    return position, rms, excluded_satellites
+    excluded_satellites = list(np.where(outliers)[0])
+    
+    return position, rms, clock_bias, excluded_satellites
 
 def ecef_to_lla(ecef_coords):
     """
@@ -155,6 +198,9 @@ def detect_spoofing(group, residuals, rms, lla):
     """
     Detects spoofing based on RMS error and satellite data consistency.
 
+    The function uses various checks, such as high RMS error, unreasonable altitude,
+    and individual satellite residual anomalies, to detect spoofed satellites.
+
     Args:
         group (pd.DataFrame): DataFrame containing satellite measurements for a single epoch.
         residuals (np.array): Residuals between observed and estimated pseudoranges.
@@ -166,16 +212,17 @@ def detect_spoofing(group, residuals, rms, lla):
     """
     spoofed_satellites = []
     
+    # Check if the RMS error is excessively high.
     if rms > 2000:
         spoofed_satellites.extend(group['SatPRN (ID)'].tolist())
         return spoofed_satellites, "High RMS"
     
-    # Check for unreasonable altitude
+    # Check for unreasonable altitude.
     if lla[2] < -1000 or lla[2] > 100000:  # -1km to 100km range
         spoofed_satellites.extend(group['SatPRN (ID)'].tolist())
         return spoofed_satellites, "Unreasonable altitude"
     
-    # Individual satellite checks using Z-scores
+    # Individual satellite checks using Z-scores.
     z_scores = np.abs((residuals - np.mean(residuals)) / np.std(residuals))
     threshold = 3 
     spoofed_indices = np.where(z_scores > threshold)[0]
@@ -186,6 +233,9 @@ def detect_spoofing(group, residuals, rms, lla):
 def process_epoch(gps_time, group, kml, previous_position):
     """
     Processes data for a single epoch to compute position and detect spoofing.
+
+    This function handles the processing of satellite measurements for a single time epoch.
+    It computes the receiver's position, detects spoofing, and adds the position data to a KML file for visualization.
 
     Args:
         gps_time (str): GPS time of the epoch.
@@ -205,23 +255,25 @@ def process_epoch(gps_time, group, kml, previous_position):
     if len(sat_positions) < 4:
         raise ValueError("Not enough valid satellite data for position calculation.")
 
+    # Calculate weights based on carrier-to-noise ratio (CN0) and Doppler shift.
     weights = np.where(np.isnan(doppler), 1 / (cn0 + 1e-6), cn0 / (np.abs(doppler) + 1e-6))
     weights /= weights.sum()
     
-    position, rms, excluded_satellites = solve_position_and_compute_rms(sat_positions, pseudoranges, weights)
+    position, rms, clock_bias, excluded_satellites = solve_position_and_compute_rms(sat_positions, pseudoranges, weights)
     lla = ecef_to_lla(position)
     
+    # Add the estimated position to the KML file.
     pnt = kml.newpoint(name=f"{gps_time}", coords=[(lla[1], lla[0], lla[2])])
     pnt.timestamp.when = gps_time_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     
-    # Detect spoofing
+    # Detect spoofing.
     estimated_ranges = np.sqrt(((sat_positions - position)**2).sum(axis=1))
-    residuals = estimated_ranges - pseudoranges
+    residuals = estimated_ranges + clock_bias - pseudoranges  # Including receiver clock bias
 
     all_satellites = group['SatPRN (ID)'].tolist()
     spoofed_satellites, spoofing_reason = detect_spoofing(group, residuals, rms, lla)
     
-    # Check for sudden position jumps
+    # Check for sudden position jumps.
     if previous_position is not None:
         distance = np.linalg.norm(position - previous_position)
         if distance > 1000:  # 1km threshold, adjust as needed
@@ -242,6 +294,9 @@ def process_epoch(gps_time, group, kml, previous_position):
 def process_satellite_data(data, kml_output_path):
     """
     Processes GNSS data and generates KML visualization.
+
+    This function handles the entire processing workflow for GNSS data. It groups the data by epoch,
+    processes each epoch, and generates a KML file for visualization. It also stores results in a list.
 
     Args:
         data (pd.DataFrame): DataFrame containing GNSS measurements.
@@ -272,6 +327,9 @@ def save_results_to_text(results, output_txt):
     """
     Saves RMS results and spoofing information to a text file.
 
+    This function writes the processed results, including position estimates and spoofing detection information,
+    to a text file for further analysis or reporting.
+
     Args:
         results (list): List of results for each epoch.
         output_txt (str): Path to the output text file.
@@ -297,6 +355,9 @@ def save_results_to_text(results, output_txt):
 def add_position_data_to_csv(results, input_csv, output_csv):
     """
     Adds computed position data to the original CSV file.
+
+    This function merges the computed position data with the original GNSS measurements and saves the updated
+    information to a new CSV file.
 
     Args:
         results (list): List of results for each epoch.
@@ -338,13 +399,13 @@ def add_position_data_to_csv(results, input_csv, output_csv):
     add_to_csv_df = pd.DataFrame(add_to_csv)
     existing_data = pd.read_csv(input_csv)
     
-    # Remove any existing calculated columns from the existing data
+    # Remove any existing calculated columns from the existing data.
     columns_to_remove = ['PosX_calculated', 'PosY_calculated', 'PosZ_calculated',
                          'Lat_calculated', 'Lon_calculated', 'Alt_calculated', 'RMS',
                          'Spoofed_Satellites', 'Spoofing_Reason', 'Excluded_Satellites']
     existing_data = existing_data.drop(columns=[col for col in columns_to_remove if col in existing_data.columns])
     
-    # Merge the dataframes
+    # Merge the dataframes.
     combined_data = pd.merge(existing_data, add_to_csv_df, on='GPS Time', how='left')
     combined_data.to_csv(output_csv, index=False)
     logging.info(f"Updated data saved to {output_csv}")
@@ -352,6 +413,9 @@ def add_position_data_to_csv(results, input_csv, output_csv):
 def main():
     """
     Main function that orchestrates the GNSS data processing and output generation.
+
+    This function parses the command-line arguments, reads the input data, processes it,
+    generates the KML visualization, saves the results to a text file, and updates the original CSV file.
     """
     args = parse_arguments()
     data = read_gnss_data(args.input_file)
