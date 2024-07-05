@@ -31,14 +31,14 @@ The project includes modules for processing GNSS measurements from raw data file
 
 
 
-- ```rms_positioning.py```:
-  - parse_arguments: Parses command-line arguments for specifying the input CSV log file.
-  - read_gnss_data: Reads GNSS data from a CSV file using the pandas library.
-  - positioning_function: Computes the residuals between observed and estimated pseudoranges, weighted by signal strength (CN0) or inverse of Doppler shift.
-  - solve_position_and_compute_rms: Uses the least_squares optimization routine to estimate the receiver's position and compute the RMS error.
-  - lla_from_ecef: Converts ECEF coordinates to LLA using the navpy library.
-  - process_satellite_data: Processes GNSS data, grouping it by GPS time and computing the receiver's position and RMS error for each epoch.
-  - main: Parses command-line arguments, reads the GNSS data, processes it, and prints the results, including GPS time, estimated position (ECEF and LLA), and RMS error.
+#### rms_positioning.py:
+- `parse_arguments`: Parses command-line arguments for specifying the input CSV log file.
+- `read_gnss_data`: Reads GNSS data from a CSV file using the pandas library.
+- `positioning_function`: Computes the residuals between observed and estimated pseudoranges, weighted by signal strength (CN0) or inverse of Doppler shift.
+- `solve_position_and_compute_rms`: Uses the least_squares optimization routine to estimate the receiver's position and compute the RMS error.
+- `lla_from_ecef`: Converts ECEF coordinates to LLA using the navpy library.
+- `process_satellite_data`: Processes GNSS data, grouping it by GPS time and computing the receiver's position and RMS error for each epoch.
+- `main`: Parses command-line arguments, reads the GNSS data, processes it, and prints the results, including GPS time, estimated position (ECEF and LLA), and RMS error.
 </br>
   
 - ```gnss_processing.py```:
