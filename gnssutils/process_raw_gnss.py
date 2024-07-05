@@ -1,5 +1,5 @@
 import csv
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 import numpy as np
 from .constants import WEEKSEC, LIGHTSPEED, GPS_EPOCH, MU, OMEGA_E_DOT, GLONASS_TIME_OFFSET
@@ -13,6 +13,7 @@ def read_data(input_filepath):
 
     Returns:
         pd.DataFrame: DataFrame containing the raw GNSS measurements.
+        pd.DataFrame: DataFrame containing Android Fix data.
     """
     measurements, android_fixes = [], []
     with open(input_filepath) as csvfile:
@@ -29,7 +30,7 @@ def read_data(input_filepath):
                 elif row[0] == 'Raw':
                     measurements.append(row[1:])
 
-    return pd.DataFrame(measurements[1:], columns=measurements[0])
+    return pd.DataFrame(measurements[1:], columns=measurements[0]), pd.DataFrame(android_fixes[1:], columns = android_fixes[0])
 
 def preprocess_measurements(measurements):
     """
@@ -194,3 +195,8 @@ def calculate_satellite_position(ephemeris, transmit_time):
     sv_position['z_k'] = y_k_prime*np.sin(i_k)
     
     return sv_position
+
+def unix_millis_to_gps_time(unix_millis):
+    """Convert Unix milliseconds to GPS Time string format."""
+    unix_time = datetime.fromtimestamp(float(unix_millis) / 1000.0, tz=timezone.utc)
+    return unix_time.isoformat()

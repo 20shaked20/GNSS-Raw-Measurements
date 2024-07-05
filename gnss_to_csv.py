@@ -16,7 +16,7 @@ import numpy as np
 from gnssutils import (
     EphemerisManager, read_data, preprocess_measurements, calculate_satellite_position,
     check_agc_cn0, check_svid_sanity, check_time_consistency,
-    check_cross_correlation, LIGHTSPEED
+    check_cross_correlation, LIGHTSPEED, unix_millis_to_gps_time
 )
 
 pd.options.mode.chained_assignment = None
@@ -52,7 +52,7 @@ def main():
 
     args = parse_arguments()
     # TODO: add cleanup of existing igs & nasa folders
-    unparsed_measurements = read_data(args.input_file)
+    unparsed_measurements, android_fixes = read_data(args.input_file)
     measurements = preprocess_measurements(unparsed_measurements)
     measurements = check_agc_cn0(measurements)
 
@@ -106,6 +106,7 @@ def main():
             
     csv_df = pd.DataFrame(csv_output)
     csv_df.to_csv("gnss_measurements_output.csv", index=False)
+    android_fixes.to_csv("android_fixes.csv", index=False)
 
 try:
     main()
