@@ -1,3 +1,8 @@
+"""
+Live GNSS Data Processing Script
+
+"""
+
 import os
 import csv
 import argparse
@@ -8,8 +13,8 @@ import numpy as np
 import time
 
 from gnssutils import EphemerisManager
-from android_adb_utils import *
-from constants import WEEKSEC, GPS_EPOCH, MU, OMEGA_E_DOT, LIGHTSPEED, GLONASS_TIME_OFFSET
+from gnssutils.android_adb_utils import *
+from gnssutils.constants import WEEKSEC, GPS_EPOCH, MU, OMEGA_E_DOT, LIGHTSPEED, GLONASS_TIME_OFFSET
 
 pd.options.mode.chained_assignment = None
 

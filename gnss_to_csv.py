@@ -5,18 +5,6 @@ This script processes GNSS log files to extract, preprocess, and analyze GNSS me
 ensure data quality, including AGC/CN0 checks, SVID sanity checks, cross-correlation checks, and time consistency checks.
 The script also calculates satellite positions and flags suspicious measurements (which might indicate on satellite spoofing, etc..)
 
-Functions:
-- parse_arguments(): Parses command-line arguments and gets the GNSS log file name from the user.
-- read_data(input_filepath): Reads GNSS log data from a CSV file.
-- preprocess_measurements(measurements): Preprocesses the raw GNSS measurements.
-- check_agc_cn0(measurements): Checks the AGC and C/N0 values for suspicious measurements.
-- check_svid_sanity(measurements, ephemeris): Checks the sanity of SVIDs in the measurements.
-- calculate_satellite_position(ephemeris, transmit_time): Calculates the satellite positions based on ephemeris data.
-- check_satellite_position(sv_position, receiver_position, max_distance_error): Checks the sanity of satellite positions.
-- check_time_consistency(measurements, max_time_error): Checks the time consistency of the measurements.
-- check_cross_correlation(measurements, correlation_threshold): Checks for high cross-correlation in the measurements.
-- main(): Main function that orchestrates the GNSS data processing.
-
 """
 
 import traceback
@@ -28,7 +16,7 @@ import pandas as pd
 import numpy as np
 
 from gnssutils import EphemerisManager
-from constants import WEEKSEC, LIGHTSPEED, GPS_EPOCH, MU, OMEGA_E_DOT
+from gnssutils.constants import WEEKSEC, LIGHTSPEED, GPS_EPOCH, MU, OMEGA_E_DOT
 
 pd.options.mode.chained_assignment = None
 
