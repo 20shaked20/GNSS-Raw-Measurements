@@ -12,22 +12,25 @@ This repository contains code for processing GNSS (Global Navigation Satellite S
 The project includes modules for processing GNSS measurements from raw data files, performing positioning calculations, and visualizing results. </br></br>
 
 ### Modules:
-**1. gnss_to_csv:** Parses GNSS raw measurements from CSV files and preprocesses data for analysis.
-**2. rms_positioning:** Computes the receiver's position using Root Mean Square (RMS) error minimization.
-**3. gnss_processing:** Orchestrates data processing flow between gnss_to_csv and rms_positioning modules.
-**4. gnss-data-viewer:** Web-based interface for visualizing GNSS data and KML files.
+1. ```gnss_to_csv``` Parses GNSS raw measurements from CSV files and preprocesses data for analysis.
+2. ```rms_positioning``` Computes the receiver's position using Root Mean Square (RMS) error minimization.
+3. ```gnss_processing``` Orchestrates data processing flow between ```gnss_to_csv``` and ```rms_positioning``` modules.
+4. ```gnss-data-viewer``` Web-based interface for visualizing GNSS data and KML files.
+5. ```live_gnss_processing``` Implements live processing of GNSS data from connected Android devices, providing real-time analysis and visualization of satellite data.
+
+
+### Functions :desktop_computer:
+  
+#### gnss_to_csv.py:
+- `parse_arguments`: Handles command-line arguments for specifying the input file and data directory using the argparse library.
+- `read_data`: Reads GNSS measurements from a CSV file, distinguishing between 'Fix' and 'Raw' measurements.
+- `preprocess_measurements`: Preprocesses GNSS measurements, including formatting satellite IDs, filtering GPS satellites, converting columns to numeric representations, generating timestamps, identifying epochs, and calculating additional parameters related to GNSS measurements.
+- `calculate_satellite_position`: Calculates the position of each satellite in ECEF coordinates based on ephemeris data and transmit time.
+- `main`: Initializes an EphemerisManager object, iterates over epochs in the measurements, calculates satellite positions, corrects measured pseudorange values, calculates Doppler shifts, and stores the processed data in a CSV file named "gnss_measurements_output.csv".
+</br>
 
 
 
-## Modules and Functions :desktop_computer:
-
-- ```gnss_to_csv.py```:
-    - parse_arguments: Handles command-line arguments for specifying the input file and data directory using the argparse library.
-    - read_data: Reads GNSS measurements from a CSV file, distinguishing between 'Fix' and 'Raw' measurements.
-    - preprocess_measurements: Preprocesses GNSS measurements, including formatting satellite IDs, filtering GPS satellites, converting columns to numeric representations, generating timestamps, identifying epochs, and calculating additional                                 parameters related to GNSS measurements.
-    - calculate_satellite_position: Calculates the position of each satellite in ECEF coordinates based on ephemeris data and transmit time.
-    - main: Initializes an EphemerisManager object, iterates over epochs in the measurements, calculates satellite positions, corrects measured pseudorange values, calculates Doppler shifts, and stores the processed data in a CSV file named         "gnss_measurements_output.csv". </br>
-  </br>
 - ```rms_positioning.py```:
   - parse_arguments: Parses command-line arguments for specifying the input CSV log file.
   - read_gnss_data: Reads GNSS data from a CSV file using the pandas library.
