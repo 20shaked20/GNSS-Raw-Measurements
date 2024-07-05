@@ -1,5 +1,5 @@
 # GNSS-Raw-Measurements :satellite:
-This repository contains code for processing GNSS (Global Navigation Satellite System) raw measurements, developed as part of the Ex0 assignment in the Autonomous Robotics course.
+This repository contains code for processing GNSS (Global Navigation Satellite System) raw measurements, developed as part of the final assignment of the course Autonomous Robots.
 
 ## Created By:
 * [Shaked Levi](https://github.com/20shaked20)
@@ -9,12 +9,15 @@ This repository contains code for processing GNSS (Global Navigation Satellite S
 </br>
 
 ## Overview :pushpin:
-The project consists of two main modules: </br></br>
-**1. gnss_to_csv:** This module focuses on parsing GNSS measurements from a CSV file and preprocessing them for further analysis. It includes functions for formatting satellite IDs, filtering GPS satellites, converting columns to numeric representations, calculating timestamps, identifying epochs, and more.
+The project includes modules for processing GNSS measurements from raw data files, performing positioning calculations, and visualizing results. </br></br>
 
-**2. rms_positioning:** This module implements a positioning algorithm based on Root Mean Square (RMS) error minimization. It computes the receiver's position using observed and estimated pseudoranges, considering signal strength (CN0) or inverse Doppler shift for weighting. Additionally, it converts Earth-Centered Earth-Fixed (ECEF) coordinates to latitude, longitude, and altitude (LLA).
-</br>
-</br>
+### Modules:
+**1. gnss_to_csv:** Parses GNSS raw measurements from CSV files and preprocesses data for analysis.
+**2. rms_positioning:** Computes the receiver's position using Root Mean Square (RMS) error minimization.
+**3. gnss_processing:** Orchestrates data processing flow between gnss_to_csv and rms_positioning modules.
+**4. gnss-data-viewer:** Web-based interface for visualizing GNSS data and KML files.
+
+
 
 ## Modules and Functions :desktop_computer:
 
