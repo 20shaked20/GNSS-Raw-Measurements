@@ -4,16 +4,14 @@ const cors = require('cors');
 const path = require('path');
 const bodyParser = require('body-parser');
 const fs = require('fs');
-const { spawn, execSync } = require('child_process'); 
-
+const { spawn, execSync } = require('child_process');
 
 const app = express();
 const PORT = 5000;
 
-app.use(cors()); // Enable CORS for all routes
+app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
 
 app.get('/gnss-data', (req, res) => {
   res.sendFile(path.join(__dirname, '../gnss_measurements_output.csv'));
@@ -37,11 +35,11 @@ app.post('/run-gnss', (req, res) => {
     res.status(400).json({ error: 'No file name provided' });
     return;
   }
-  
+
   const pythonExecutable = execSync('python3 -c "import sys; print(sys.executable)"').toString().trim();
   const process = spawn(pythonExecutable, ['gnss_processing.py'], { cwd: path.join(__dirname, '../') });
   const filePath = path.join(__dirname, '../data', logFileName);
-  
+
   process.stdout.on('data', (data) => {
     console.log(`stdout: ${data}`);
     if (data.toString().includes('Enter the GNSS log file name: ')) {
@@ -69,6 +67,26 @@ app.post('/run-gnss', (req, res) => {
   });
 });
 
+app.post('/run-live-gnss', (req, res) => {
+  const pythonExecutable = execSync('python3 -c "import sys; print(sys.executable)"').toString().trim();
+  const process = spawn(pythonExecutable, ['live_gnss_processing.py'], { cwd: path.join(__dirname, '../') });
+
+  process.stdout.on('data', (data) => {
+    console.log(`stdout: ${data}`);
+  });
+
+  process.stderr.on('data', (data) => {
+    console.error(`stderr: ${data}`);
+  });
+
+  process.on('close', (code) => {
+    if (code !== 0) {
+      res.status(500).json({ error: `live_gnss_processing.py process exited with code ${code}` });
+    } else {
+      res.json({ message: 'Live processing completed successfully' });
+    }
+  });
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);

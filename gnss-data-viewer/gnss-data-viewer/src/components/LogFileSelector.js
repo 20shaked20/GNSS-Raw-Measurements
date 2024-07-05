@@ -21,15 +21,21 @@ const LogFileSelector = () => {
     fetchLogFiles();
   }, []);
 
-  const handleFileSelection = async (event) => {
+  const handleFileSelection = (event) => {
     const fileName = event.target.value;
     setSelectedFile(fileName);
-    if (processingMode === 'offline') {
-      try {
-        await axios.post('http://localhost:5000/run-gnss', { fileName });
-      } catch (error) {
-        console.error('Error running gnss_processing.py:', error);
+  };
+
+  const handleRunProcessing = async () => {
+    try {
+      if (processingMode === 'online') {
+        await axios.post('http://localhost:5000/run-live-gnss');
+      } else if (processingMode === 'offline' && selectedFile) {
+        await axios.post('http://localhost:5000/run-gnss', { fileName: selectedFile });
       }
+      alert('Processing started');
+    } catch (error) {
+      console.error('Error running processing:', error);
     }
   };
 
@@ -70,6 +76,8 @@ const LogFileSelector = () => {
           </select>
         </>
       )}
+
+      <button onClick={handleRunProcessing}>Run Processing</button>
 
       {(processingMode === 'online' || (processingMode === 'offline' && selectedFile)) && (
         <CSVReaderComponent />
