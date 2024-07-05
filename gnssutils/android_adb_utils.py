@@ -1,5 +1,8 @@
 import subprocess
 import os
+import sys
+
+adb_command = 'adb' if sys.platform.lower() == 'linux' else 'android_platform_tools/adb'
 
 def run_adb_command(command):
     """
@@ -14,7 +17,7 @@ def run_adb_command(command):
     Raises:
         Exception: If the command fails.
     """
-    result = subprocess.run(['android_platform_tools/adb'] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run([adb_command] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
         raise Exception(f"Command failed with error: {result.stderr}")
     return result.stdout
