@@ -17,16 +17,11 @@ from scipy.stats import chi2
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def parse_arguments():
-    """
-    Parses command-line arguments for input and output file paths.
-
-    Returns:
-        args (argparse.Namespace): Parsed command-line arguments.
-    """
     parser = argparse.ArgumentParser(description='Process multi-GNSS CSV log files for positioning and spoofing detection.')
     parser.add_argument('--input_file', type=str, default='gnss_measurements_output.csv', help='Input CSV file')
     parser.add_argument('--output_kml', type=str, default='gnss_visualization.kml', help='Output KML file')
     parser.add_argument('--output_txt', type=str, default='RmsResults.txt', help='Output RMS results text file')
+    parser.add_argument('--android_fixes', type=str, default='android_fixes.csv', help='Android fixes CSV file')
     return parser.parse_args()
 
 def read_gnss_data(filepath):
@@ -40,6 +35,36 @@ def read_gnss_data(filepath):
         pd.DataFrame: DataFrame containing GNSS measurements.
     """
     return pd.read_csv(filepath)
+
+def process_android_fixes(csv_path, kml):
+    try:
+        data = pd.read_csv(csv_path)
+    except FileNotFoundError:
+        logging.warning(f"Android fixes file '{csv_path}' not found. Skipping Android fixes processing.")
+        return kml
+    except Exception as e:
+        logging.error(f"Error reading Android fixes file: {e}")
+        return kml
+
+    data = data[data['Provider'].isin(['GPS', 'FLP'])]
+    
+    gps_style = simplekml.Style()
+    gps_style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png'
+    gps_style.iconstyle.color = simplekml.Color.blue
+    
+    flp_style = simplekml.Style()
+    flp_style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/shapes/placemark_square.png'
+    flp_style.iconstyle.color = simplekml.Color.red
+    
+    for _, row in data.iterrows():
+        pnt = kml.newpoint(name=f"Android {row['Provider']} - {row['UnixTimeMillis']}")
+        pnt.coords = [(row['LongitudeDegrees'], row['LatitudeDegrees'], row['AltitudeMeters'])]
+        pnt.timestamp.when = pd.to_datetime(row['UnixTimeMillis'], unit='ms').strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        pnt.style = gps_style if row['Provider'] == 'GPS' else flp_style
+    
+    logging.info(f"Added {len(data)} Android fixes to KML.")
+    return kml
 
 def positioning_function(x, sat_positions, observed_pseudoranges, weights):
     """
@@ -296,7 +321,7 @@ def process_epoch(gps_time, group, kml, previous_position):
         'Spoofing Reason': spoofing_reason
     }
 
-def process_satellite_data(data, kml_output_path):
+def process_satellite_data(data, kml):
     """
     Processes GNSS data and generates KML visualization.
 
@@ -312,7 +337,6 @@ def process_satellite_data(data, kml_output_path):
     """
     grouped = data.groupby('GPS Time')
     results = []
-    kml = simplekml.Kml()
     previous_position = None
     
     for gps_time, group in grouped:
@@ -322,9 +346,6 @@ def process_satellite_data(data, kml_output_path):
             previous_position = result['Estimated Position ECEF']
         except ValueError as e:
             logging.error(f"Skipping epoch at {gps_time} due to error: {e}")
-    
-    kml.save(kml_output_path)
-    logging.info(f"{kml_output_path} File Is Created! \n")
     
     return results
 
@@ -416,15 +437,12 @@ def add_position_data_to_csv(results, input_csv, output_csv):
     logging.info(f"Updated data saved to {output_csv}")
 
 def main():
-    """
-    Main function that orchestrates the GNSS data processing and output generation.
-
-    This function parses the command-line arguments, reads the input data, processes it,
-    generates the KML visualization, saves the results to a text file, and updates the original CSV file.
-    """
     args = parse_arguments()
     data = read_gnss_data(args.input_file)
-    results = process_satellite_data(data, args.output_kml)
+    kml = simplekml.Kml()
+    results = process_satellite_data(data, kml)
+    kml = process_android_fixes('android_fixes.csv', kml)
+    kml.save(args.output_kml)
     save_results_to_text(results, args.output_txt)
     add_position_data_to_csv(results, args.input_file, args.input_file)
 
