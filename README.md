@@ -6,7 +6,6 @@ This repository contains code for processing GNSS (Global Navigation Satellite S
 * [Dana Zorohov](https://github.com/danaZo)
 * [Yuval Bubnovsky](https://github.com/YuvalBubnovsky)
 
-</br>
 
 ## Overview :pushpin:
 The project includes modules for processing GNSS measurements from raw data files, performing positioning calculations, and visualizing results. </br></br>
@@ -27,9 +26,6 @@ The project includes modules for processing GNSS measurements from raw data file
 - `preprocess_measurements`: Preprocesses GNSS measurements, including formatting satellite IDs, filtering GPS satellites, converting columns to numeric representations, generating timestamps, identifying epochs, and calculating additional parameters related to GNSS measurements.
 - `calculate_satellite_position`: Calculates the position of each satellite in ECEF coordinates based on ephemeris data and transmit time.
 - `main`: Initializes an EphemerisManager object, iterates over epochs in the measurements, calculates satellite positions, corrects measured pseudorange values, calculates Doppler shifts, and stores the processed data in a CSV file named "gnss_measurements_output.csv".
-</br>
-
-
 
 #### rms_positioning.py:
 - `parse_arguments`: Parses command-line arguments for specifying the input CSV log file.
@@ -39,12 +35,49 @@ The project includes modules for processing GNSS measurements from raw data file
 - `lla_from_ecef`: Converts ECEF coordinates to LLA using the navpy library.
 - `process_satellite_data`: Processes GNSS data, grouping it by GPS time and computing the receiver's position and RMS error for each epoch.
 - `main`: Parses command-line arguments, reads the GNSS data, processes it, and prints the results, including GPS time, estimated position (ECEF and LLA), and RMS error.
-</br>
   
-- ```gnss_processing.py```:
-  - This is a simple wrapping python program. </br>
-  - it calls the gnss_to_csv.py and then exectues the rms_positioning.py according to the output was given by gnss_to_csv.py. </br>
-</br>
+#### gnss_processing.py:
+This is a simple wrapping python program.</br>
+It calls the `gnss_to_csv.py` and then executes the `rms_positioning.py` according to the output given by `gnss_to_csv.py`.
+
+#### live_gnss_processing.py:
+- `parse_arguments`: Parses command-line arguments for specifying the input device and output directory.
+- `initialize_device`: Sets up the connection to the Android device using adb.
+- `record_gnss_data`: Records live GNSS data from the connected Android device and stores it in a specified directory.
+- `process_live_data`: Processes the recorded live GNSS data using `gnss_to_csv` and `rms_positioning` modules.
+- `main`: Initializes the device, records live data, and processes it.
+
+#### gnss-data-viewer Directory:
+This directory contains a React-based web application for visualizing GNSS data.
+- `App.js`: Main application file that handles view changes and renders components based on user interactions.
+- `App.css`: Styling for the web application.
+
+#### components Directory:
+- `CSVReader.js`: Fetches GNSS data, parses the CSV file, and displays it in a table with filtering options for different constellations.
+- `LogFileSelector.js`: Provides an interface for selecting log files for processing.
+- `SatelliteView.js`: Visualizes satellite positions.
+- `KmlViewerComponent.js`: Renders KML files for geographic visualization.
+
+#### gnssutils Directory:
+- `android_adb_utils.py`: Utility functions for interacting with Android devices using adb.
+- `constants.py`: Defines constants used across multiple modules.
+- `ephemeris_manager.py`: Manages ephemeris data for satellite position calculations.
+
+#### Data Directory:
+This directory contains GNSS log files categorized into good recordings and spoof recordings.
+
+- Good Recordings:
+  - gnss_log_2024_04_13_19_51_17.txt
+  - gnss_log_2024_04_13_19_52_00.txt
+  - gnss_log_2024_04_13_19_53_33.txt
+- Spoof Recordings:
+  - Beirut.txt
+  - Beirut2.txt
+  - Cairo.txt
+
+#### Android Platform Tools Directory:
+This directory contains tools for connecting Android devices to a PC to record live GNSS data.
+</br></br>
 
 
 ## Testing :mag:
