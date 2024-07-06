@@ -19,96 +19,14 @@ The project includes modules for processing GNSS measurements from raw data file
 
 More Information at our [Wiki](https://github.com/20shaked20/GNSS-Raw-Measurements/wiki)
 
-</br></br>
+</br>
 
 ## Testing :mag:
 To test the program, utilize the log files located in the "data" folder. These files were specifically chosen for testing purposes.
-</br>
+</br></br>
 
 ## How To Run :joystick:
-* Clone repositoy
-* Navigate to the directory containing the cloned repository.
-  
-> [!NOTE]
-> It is very recommended to create a virtual environment for this project.
-
-* How to Create a Python virtual environment (venv) where you install required packages:
-* In the terminal, navigate to the project directory if you're not already there. You can use the `cd` command to change directories.
-* Run the following command to create a virtual environment. You can name it anything, but venv is a common choice:
-```
-python -m venv venv
-```
-* Activate the Virtual Environment: Use the Activate script directly from the virtual environment's Scripts folder.
-```
-python3 -m venv myenv
-source myenv/bin/activate  # Activate the virtual environment on Unix/macOS
-```
-For Windows:
-```
-myenv\Scripts\activate
-```
-* Once activated, you should see the name of your virtual environment in the terminal prompt, indicating that the environment is active.
-* Install Dependencies: With the virtual environment activated, install the necessary packages:
-```
-pip install -r requirements.txt
-```
-
-### Running gnss_processing.py:
-* Make sure you have installed ``requirements.txt`` - write in terminal -> ``pip install -r requirements.txt`` </br>
-* Run the program ``gnss_processing.py``
-* it will ask to input a file location: </br>
-![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/73894107/5fa65198-0bee-4e0a-9d3f-e5dd8002fa6c) </br>
-  Make sure that the file is placed inside ``data`` folder and then copy its relative path to the cmd as presented above! </br>
-  ![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/73894107/46ed2c74-e3b6-4623-b92e-daea2a0eef3c)
-* After doing that, the program will process the log and output 3 files: </br>
-  1. ``gnss_measurments_output.csv`` - this file includes all the required data + lan,lot,alt columns at the end representing our location. </br>
-  2. ``gnss_visualition.kml`` - a KML file that can be used to present the coordiantes of our trip visually. </br>
-  3. ``Rms_Results.txt`` - we used this mainly for debbuging, but we kept it as it's a nice to have - presents some details about our calculations of RMS </br>
-
-> [!NOTE]
-> in case you want to run only rms_positioning.py or gnss_to_csv.py, you can do that, just make sure to follow the instructions: first run gnss_to_csv.py, get the correct outputting csv (the name is important, as the rms_positoning using it to get the data), and then run the rms_positoning.
-
-### Running live_gnss_processing.py:
-* Connect your Android device to your PC using a USB cable.
-* Enable USB debugging on your Android device.
-* Make sure you have the Android Platform Tools installed and accessible in your PATH.
-* Run `live_gnss_processing.py` with the required arguments:
-```
-python live_gnss_processing.py --device <device_serial> --output_dir <output_directory>
-```
-  - Replace <device_serial> with your Android device's serial number and <output_directory> with the directory where you want to save the recorded data.
-* The script will record live GNSS data from your device and process it.
-
-### Running the UI:
-* Navigate to the GNSS-RAW-MEASUREMENTS/gnss-data-viewer/gnss-data-viewer directory.
-* Install the required dependencies:
-```
-npm install  
-```
-* On Linux OS, run the command:
-```
-export NODE_OPTIONS=--openssl-legacy-provider
-```
-* On Windows OS, run the command:
-```
-$env:NODE_OPTIONS="--openssl-legacy-provider"
-```
-* Start the fronted React:
-```
-npm start
-```
-* Open an additional terminal to run the server.
-* Navigate to the GNSS-RAW-MEASUREMENTS/server directory.
-* Install the required dependencies:
-```
-npm install  
-```
-* Start the development server:
-```
-node server.js
-```
-* Open your web browser and go to http://localhost:3000 to view the application.
-* Use the UI to select log files, view satellite data, and visualize KML files.
+See at our wiki page [How To Run](https://github.com/20shaked20/GNSS-Raw-Measurements/wiki/How-To-Run)
 </br></br>
 
 ## Topic Overview - for the main assignment of the course :flying_saucer:
