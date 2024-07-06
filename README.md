@@ -6,53 +6,113 @@ This repository contains code for processing GNSS (Global Navigation Satellite S
 * [Dana Zorohov](https://github.com/danaZo)
 * [Yuval Bubnovsky](https://github.com/YuvalBubnovsky)
 
-</br>
 
 ## Overview :pushpin:
 The project includes modules for processing GNSS measurements from raw data files, performing positioning calculations, and visualizing results. </br></br>
 
 ### Modules:
-**1. gnss_to_csv:** Parses GNSS raw measurements from CSV files and preprocesses data for analysis.
-**2. rms_positioning:** Computes the receiver's position using Root Mean Square (RMS) error minimization.
-**3. gnss_processing:** Orchestrates data processing flow between gnss_to_csv and rms_positioning modules.
-**4. gnss-data-viewer:** Web-based interface for visualizing GNSS data and KML files.
+1. ```gnss_to_csv``` Parses GNSS raw measurements from CSV files and preprocesses data for analysis.
+2. ```rms_positioning``` Computes the receiver's position using Root Mean Square (RMS) error minimization.
+3. ```gnss_processing``` Orchestrates data processing flow between ```gnss_to_csv``` and ```rms_positioning``` modules.
+4. ```gnss-data-viewer``` Web-based interface for visualizing GNSS data and KML files.
+5. ```live_gnss_processing``` Implements live processing of GNSS data from connected Android devices, providing real-time analysis and visualization of satellite data.
 
 
-
-## Modules and Functions :desktop_computer:
-
-- ```gnss_to_csv.py```:
-    - parse_arguments: Handles command-line arguments for specifying the input file and data directory using the argparse library.
-    - read_data: Reads GNSS measurements from a CSV file, distinguishing between 'Fix' and 'Raw' measurements.
-    - preprocess_measurements: Preprocesses GNSS measurements, including formatting satellite IDs, filtering GPS satellites, converting columns to numeric representations, generating timestamps, identifying epochs, and calculating additional                                 parameters related to GNSS measurements.
-    - calculate_satellite_position: Calculates the position of each satellite in ECEF coordinates based on ephemeris data and transmit time.
-    - main: Initializes an EphemerisManager object, iterates over epochs in the measurements, calculates satellite positions, corrects measured pseudorange values, calculates Doppler shifts, and stores the processed data in a CSV file named         "gnss_measurements_output.csv". </br>
-  </br>
-- ```rms_positioning.py```:
-  - parse_arguments: Parses command-line arguments for specifying the input CSV log file.
-  - read_gnss_data: Reads GNSS data from a CSV file using the pandas library.
-  - positioning_function: Computes the residuals between observed and estimated pseudoranges, weighted by signal strength (CN0) or inverse of Doppler shift.
-  - solve_position_and_compute_rms: Uses the least_squares optimization routine to estimate the receiver's position and compute the RMS error.
-  - lla_from_ecef: Converts ECEF coordinates to LLA using the navpy library.
-  - process_satellite_data: Processes GNSS data, grouping it by GPS time and computing the receiver's position and RMS error for each epoch.
-  - main: Parses command-line arguments, reads the GNSS data, processes it, and prints the results, including GPS time, estimated position (ECEF and LLA), and RMS error.
-</br>
+### Functions :desktop_computer:
   
-- ```gnss_processing.py```:
-  - This is a simple wrapping python program. </br>
-  - it calls the gnss_to_csv.py and then exectues the rms_positioning.py according to the output was given by gnss_to_csv.py. </br>
-</br>
+#### gnss_to_csv.py:
+- `parse_arguments`: Handles command-line arguments for specifying the input file and data directory using the argparse library.
+- `read_data`: Reads GNSS measurements from a CSV file, distinguishing between 'Fix' and 'Raw' measurements.
+- `preprocess_measurements`: Preprocesses GNSS measurements, including formatting satellite IDs, filtering GPS satellites, converting columns to numeric representations, generating timestamps, identifying epochs, and calculating additional parameters related to GNSS measurements.
+- `calculate_satellite_position`: Calculates the position of each satellite in ECEF coordinates based on ephemeris data and transmit time.
+- `main`: Initializes an EphemerisManager object, iterates over epochs in the measurements, calculates satellite positions, corrects measured pseudorange values, calculates Doppler shifts, and stores the processed data in a CSV file named "gnss_measurements_output.csv".
+
+#### rms_positioning.py:
+- `parse_arguments`: Parses command-line arguments for specifying the input CSV log file.
+- `read_gnss_data`: Reads GNSS data from a CSV file using the pandas library.
+- `positioning_function`: Computes the residuals between observed and estimated pseudoranges, weighted by signal strength (CN0) or inverse of Doppler shift.
+- `solve_position_and_compute_rms`: Uses the least_squares optimization routine to estimate the receiver's position and compute the RMS error.
+- `lla_from_ecef`: Converts ECEF coordinates to LLA using the navpy library.
+- `process_satellite_data`: Processes GNSS data, grouping it by GPS time and computing the receiver's position and RMS error for each epoch.
+- `main`: Parses command-line arguments, reads the GNSS data, processes it, and prints the results, including GPS time, estimated position (ECEF and LLA), and RMS error.
+  
+#### gnss_processing.py:
+This is a simple wrapping python program.</br>
+It calls the `gnss_to_csv.py` and then executes the `rms_positioning.py` according to the output given by `gnss_to_csv.py`.
+
+#### live_gnss_processing.py:
+- `parse_arguments`: Parses command-line arguments for specifying the input device and output directory.
+- `initialize_device`: Sets up the connection to the Android device using adb.
+- `record_gnss_data`: Records live GNSS data from the connected Android device and stores it in a specified directory.
+- `process_live_data`: Processes the recorded live GNSS data using `gnss_to_csv` and `rms_positioning` modules.
+- `main`: Initializes the device, records live data, and processes it.
+
+#### gnss-data-viewer Directory:
+This directory contains a React-based web application for visualizing GNSS data.
+- `App.js`: Main application file that handles view changes and renders components based on user interactions.
+- `App.css`: Styling for the web application.
+
+#### components Directory:
+- `CSVReader.js`: Fetches GNSS data, parses the CSV file, and displays it in a table with filtering options for different constellations.
+- `LogFileSelector.js`: Provides an interface for selecting log files for processing.
+- `SatelliteView.js`: Visualizes satellite positions.
+- `KmlViewerComponent.js`: Renders KML files for geographic visualization.
+
+#### gnssutils Directory:
+- `android_adb_utils.py`: Utility functions for interacting with Android devices using adb.
+- `constants.py`: Defines constants used across multiple modules.
+- `ephemeris_manager.py`: Manages ephemeris data for satellite position calculations.
+
+#### Data Directory:
+This directory contains GNSS log files categorized into good recordings and spoof recordings.
+
+- Good Recordings:
+  - gnss_log_2024_04_13_19_51_17.txt
+  - gnss_log_2024_04_13_19_52_00.txt
+  - gnss_log_2024_04_13_19_53_33.txt
+- Spoof Recordings:
+  - Beirut.txt
+  - Beirut2.txt
+  - Cairo.txt
+
+#### Android Platform Tools Directory:
+This directory contains tools for connecting Android devices to a PC to record live GNSS data.
+</br></br>
 
 
 ## Testing :mag:
 To test the program, utilize the log files located in the "data" folder. These files were specifically chosen for testing purposes.
-
-
 </br>
 
 ## How To Run :joystick:
 * Clone repositoy
 * Navigate to the directory containing the cloned repository.
+  
+> [!NOTE]
+> It is very recommended to create a virtual environment for this project.
+
+* How to Create a Python virtual environment (venv) where you install required packages:
+* In the terminal, navigate to the project directory if you're not already there. You can use the `cd` command to change directories.
+* Run the following command to create a virtual environment. You can name it anything, but venv is a common choice:
+```
+python -m venv venv
+```
+* Activate the Virtual Environment: Use the Activate script directly from the virtual environment's Scripts folder.
+```
+python3 -m venv myenv
+source myenv/bin/activate  # Activate the virtual environment on Unix/macOS
+```
+For Windows:
+```
+myenv\Scripts\activate
+```
+* Once activated, you should see the name of your virtual environment in the terminal prompt, indicating that the environment is active.
+* Install Dependencies: With the virtual environment activated, install the necessary packages:
+```
+pip install -r requirements.txt
+```
+
+### Running gnss_processing.py:
 * Make sure you have installed ``requirements.txt`` - write in terminal -> ``pip install -r requirements.txt`` </br>
 * Run the program ``gnss_processing.py``
 * it will ask to input a file location: </br>
@@ -64,12 +124,51 @@ To test the program, utilize the log files located in the "data" folder. These f
   2. ``gnss_visualition.kml`` - a KML file that can be used to present the coordiantes of our trip visually. </br>
   3. ``Rms_Results.txt`` - we used this mainly for debbuging, but we kept it as it's a nice to have - presents some details about our calculations of RMS </br>
 
-</br>
-</br>
-
 > [!NOTE]
 > in case you want to run only rms_positioning.py or gnss_to_csv.py, you can do that, just make sure to follow the instructions: first run gnss_to_csv.py, get the correct outputting csv (the name is important, as the rms_positoning using it to get the data), and then run the rms_positoning.
 
+### Running live_gnss_processing.py:
+* Connect your Android device to your PC using a USB cable.
+* Enable USB debugging on your Android device.
+* Make sure you have the Android Platform Tools installed and accessible in your PATH.
+* Run `live_gnss_processing.py` with the required arguments:
+```
+python live_gnss_processing.py --device <device_serial> --output_dir <output_directory>
+```
+  - Replace <device_serial> with your Android device's serial number and <output_directory> with the directory where you want to save the recorded data.
+* The script will record live GNSS data from your device and process it.
+
+### Running the UI:
+* Navigate to the GNSS-RAW-MEASUREMENTS/gnss-data-viewer/gnss-data-viewer directory.
+* Install the required dependencies:
+```
+npm install  
+```
+* On Linux OS, run the command:
+```
+export NODE_OPTIONS=--openssl-legacy-provider
+```
+* On Windows OS, run the command:
+```
+$env:NODE_OPTIONS="--openssl-legacy-provider"
+```
+* Start the fronted React:
+```
+npm start
+```
+* Open an additional terminal to run the server.
+* Navigate to the GNSS-RAW-MEASUREMENTS/server directory.
+* Install the required dependencies:
+```
+npm install  
+```
+* Start the development server:
+```
+node server.js
+```
+* Open your web browser and go to http://localhost:3000 to view the application.
+* Use the UI to select log files, view satellite data, and visualize KML files.
+</br></br>
 
 ## Topic Overview - for the main assignment of the course :flying_saucer:
 The project focuses on expanding an initial task to develop a robust navigation system based on raw Global Navigation Satellite System (GNSS) measurements. The primary goal is to calculate real-time positions using an efficient and accurate algorithm. This system will incorporate advanced functionalities such as satellite filtering by constellation and signal strength, identification of "false" satellites, and handling disruptions. The project will also implement a disturbance detection algorithm to manage and mitigate the effects of disruptions.
