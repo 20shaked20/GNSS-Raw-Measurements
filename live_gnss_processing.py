@@ -28,12 +28,6 @@ satellite_cache = {}
 seen_satellites = set()
 
 def parse_arguments():
-    """
-    Parses command-line arguments for the script.
-
-    Returns:
-        argparse.Namespace: Parsed arguments.
-    """
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
     parser.add_argument('--data_directory', type=str, help='Directory for ephemeris data', default=os.getcwd())
     args = parser.parse_args()

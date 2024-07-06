@@ -1,3 +1,18 @@
+"""
+This script orchestrates a GNSS data processing pipeline by executing two main steps:
+1. Parsing raw GNSS data into CSV format
+2. Calculating position based on the processed CSV data
+
+Usage:
+Run this script directly to process GNSS data through the entire pipeline.
+Ensure that both 'gnss_to_csv.py' and 'rms_positioning.py' are in the same
+directory as this script.
+
+Notes:
+- The script checks for the existence of 'gnss_measurements_output.csv' before
+  proceeding to the positioning step.
+"""
+
 import traceback
 import subprocess
 import sys

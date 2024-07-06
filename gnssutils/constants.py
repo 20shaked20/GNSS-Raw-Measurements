@@ -1,3 +1,7 @@
+"""
+Constansts of various categories to be used around the GNSS calculation pipeline
+"""
+
 from datetime import datetime
 
 # Physical constants
@@ -11,3 +15,7 @@ GPS_EPOCH = datetime(1980, 1, 6, 0, 0, 0)
 
 # GLONASS constants
 GLONASS_TIME_OFFSET = 3 * 3600  # 3 hours in seconds
+
+# Spoofing detection thresholds
+AGC_THRESHOLD = 2.5  # This value should be adjusted per receiver
+CN0_THRESHOLD = 30  # dB-Hz, typical minimum for good signal quality
