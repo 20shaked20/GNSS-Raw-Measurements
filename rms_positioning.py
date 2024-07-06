@@ -11,7 +11,6 @@ from scipy.optimize import least_squares
 import navpy
 import simplekml
 import logging
-from scipy.stats import chi2
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
