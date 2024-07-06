@@ -82,14 +82,37 @@ This directory contains tools for connecting Android devices to a PC to record l
 
 ## Testing :mag:
 To test the program, utilize the log files located in the "data" folder. These files were specifically chosen for testing purposes.
-
-
 </br>
 
 ## How To Run :joystick:
-### Running gnss_processing.py:
 * Clone repositoy
 * Navigate to the directory containing the cloned repository.
+  
+> [!NOTE]
+> It is very recommended to create a virtual environment for this project.
+
+* How to Create a Python virtual environment (venv) where you install required packages:
+* In the terminal, navigate to the project directory if you're not already there. You can use the `cd` command to change directories.
+* Run the following command to create a virtual environment. You can name it anything, but venv is a common choice:
+```
+python -m venv venv
+```
+* Activate the Virtual Environment: Use the Activate script directly from the virtual environment's Scripts folder.
+```
+python3 -m venv myenv
+source myenv/bin/activate  # Activate the virtual environment on Unix/macOS
+```
+For Windows:
+```
+myenv\Scripts\activate
+```
+* Once activated, you should see the name of your virtual environment in the terminal prompt, indicating that the environment is active.
+* Install Dependencies: With the virtual environment activated, install the necessary packages:
+```
+pip install -r requirements.txt
+```
+
+### Running gnss_processing.py:
 * Make sure you have installed ``requirements.txt`` - write in terminal -> ``pip install -r requirements.txt`` </br>
 * Run the program ``gnss_processing.py``
 * it will ask to input a file location: </br>
@@ -114,6 +137,38 @@ python live_gnss_processing.py --device <device_serial> --output_dir <output_dir
 ```
   - Replace <device_serial> with your Android device's serial number and <output_directory> with the directory where you want to save the recorded data.
 * The script will record live GNSS data from your device and process it.
+
+### Running the UI:
+* Navigate to the GNSS-RAW-MEASUREMENTS/gnss-data-viewer/gnss-data-viewer directory.
+* Install the required dependencies:
+```
+npm install  
+```
+* On Linux OS, run the command:
+```
+export NODE_OPTIONS=--openssl-legacy-provider
+```
+* On Windows OS, run the command:
+```
+$env:NODE_OPTIONS="--openssl-legacy-provider"
+```
+* Start the fronted React:
+```
+npm start
+```
+* Open an additional terminal to run the server.
+* Navigate to the GNSS-RAW-MEASUREMENTS/server directory.
+* Install the required dependencies:
+```
+npm install  
+```
+* Start the development server:
+```
+node server.js
+```
+* Open your web browser and go to http://localhost:3000 to view the application.
+* Use the UI to select log files, view satellite data, and visualize KML files.
+</br></br>
 
 ## Topic Overview - for the main assignment of the course :flying_saucer:
 The project focuses on expanding an initial task to develop a robust navigation system based on raw Global Navigation Satellite System (GNSS) measurements. The primary goal is to calculate real-time positions using an efficient and accurate algorithm. This system will incorporate advanced functionalities such as satellite filtering by constellation and signal strength, identification of "false" satellites, and handling disruptions. The project will also implement a disturbance detection algorithm to manage and mitigate the effects of disruptions.
