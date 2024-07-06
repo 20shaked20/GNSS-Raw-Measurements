@@ -22,46 +22,28 @@ from gnssutils import (
 pd.options.mode.chained_assignment = None
 
 def parse_arguments():
-    """
-    Parses command-line arguments and gets the GNSS log file name from the user.
-
-    Returns:
-        args (argparse.Namespace): Parsed command-line arguments including the data directory and input file.
-    """
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
-
-    # Add --data_directory argument
     parser.add_argument('--data_directory', type=str, help='Directory for ephemeris data', default=os.getcwd())
-
     args = parser.parse_args()
-
-    # Get the input file name from the user
     input_file = input("Enter the GNSS log file name: ")
     args.input_file = input_file
 
     return args
 
 def main():
-    """
-    Main function that orchestrates the GNSS data processing.
-    """
     # Cleanup in case there are old files
     old_csv_file = "gnss_measurements_output.csv"
     if os.path.exists(old_csv_file):
         os.remove(old_csv_file)
 
     args = parse_arguments()
-    # TODO: add cleanup of existing igs & nasa folders
     unparsed_measurements, android_fixes = read_data(args.input_file)
     measurements = preprocess_measurements(unparsed_measurements)
     measurements = check_agc_cn0(measurements)
-
-    # Perform cross-correlation check
     measurements['corr_suspicious'] = check_cross_correlation(measurements)
     print(args.data_directory)
     manager = EphemerisManager(args.data_directory)
         
-    receiver_position = (0, 0, 0)  # Earth's center as a fallback
     csv_output = []
     for epoch in measurements['Epoch'].unique():
         one_epoch = measurements.loc[(measurements['Epoch'] == epoch) & (measurements['prSeconds'] < 0.1)] 
@@ -76,7 +58,6 @@ def main():
             sv_position = calculate_satellite_position(ephemeris, one_epoch['tTxSeconds'])
 
             # Apply satellite clock bias to correct the measured pseudorange values
-            # Ensure sv_position's index matches one_epoch's index
             sv_position.index = sv_position.index.map(str)  # Ensuring index types match; adjust as needed
             one_epoch = one_epoch.join(sv_position[['delT_sv']], how='left')
             one_epoch['PrM_corrected'] = one_epoch['PrM'] + LIGHTSPEED * one_epoch['delT_sv']

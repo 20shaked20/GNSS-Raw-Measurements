@@ -1,3 +1,17 @@
+"""
+Ephemeris Manager for GNSS Satellite Systems
+
+This script provides a class for managing and retrieving ephemeris data
+for various Global Navigation Satellite Systems (GNSS). It supports GPS,
+GLONASS, Galileo, and BeiDou constellations.
+
+The EphemerisManager class can:
+- Download ephemeris data from NASA and IGS servers
+- Parse and process ephemeris files
+- Retrieve ephemeris data for specific satellites at a given timestamp
+- Handle leap seconds
+"""
+
 import os
 import gzip
 import shutil

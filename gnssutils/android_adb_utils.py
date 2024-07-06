@@ -1,3 +1,17 @@
+"""
+Android Device File Management Script
+
+This script provides utility functions for managing files on an Android device
+using ADB (Android Debug Bridge). It includes functions for running ADB commands,
+listing files in a directory, appending data to files, reading files, deleting files,
+and pulling files from the device.
+
+Usage:
+Ensure ADB is installed and accessible. For Linux, 'adb' should be in the system PATH.
+For other platforms, ensure 'adb' is located in the 'android_platform_tools' directory.
+"""
+
+
 import subprocess
 import os
 import sys
