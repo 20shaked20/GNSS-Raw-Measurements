@@ -9,6 +9,7 @@ import traceback
 import pandas as pd
 import numpy as np
 import time
+import simplekml
 
 from gnssutils.android_adb_utils import *
 from gnssutils import (
@@ -53,7 +54,7 @@ def process_new_data(file_path, measurements, EphemManager, last_processed_time)
         datetime: Updated timestamp of the last processed measurement.
     """
     try:
-        unparsed_new_data = read_data(file_path)
+        unparsed_new_data, _ = read_data(file_path)
         new_measurements = preprocess_measurements(unparsed_new_data)
         new_measurements = check_agc_cn0(new_measurements)
         new_measurements['corr_suspicious'] = check_cross_correlation(new_measurements)
@@ -207,11 +208,12 @@ def main():
     with open(destination_file, 'w') as file:
         file.write(initial_data)
 
-    unparsed_measurements = read_data(destination_file)
+    unparsed_measurements, _ = read_data(destination_file)
     measurements = preprocess_measurements(unparsed_measurements)
     last_processed_time = measurements['UnixTime'].max()
     
     EphemManager = EphemerisManager()
+
     kml_update_interval = 1  # Update KML 1 sec
     last_kml_update_time = time.time()
 
@@ -240,11 +242,19 @@ def main():
 
             current_time = time.time()
             if current_time - last_kml_update_time >= kml_update_interval:
+                kml = simplekml.Kml()
                 data = pd.read_csv("gnss_measurements_output.csv")
-                results = process_satellite_data(data, "gnss_visualization.kml")
+
+                latest_gps_time = data['GPS Time'].max() # Group by latest GPS time
+                latest_data = data[data['GPS Time'] == latest_gps_time]
+                print(latest_data)
+
+                results = process_satellite_data(latest_data, kml)
                 save_results_to_text(results, "RmsResults.txt")
                 add_position_data_to_csv(results, "gnss_measurements_output.csv", "gnss_measurements_output.csv")
                 last_kml_update_time = current_time
+                
+                kml.save("gnss_visualization.kml")
                 print("KML file updated successfully.")
 
         except Exception as e:
