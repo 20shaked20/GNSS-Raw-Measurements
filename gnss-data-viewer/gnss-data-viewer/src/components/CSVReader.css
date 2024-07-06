@@ -1,7 +1,7 @@
 /* src/components/CSVReader.css */
 .table-container {
     max-width: 100%;
-    max-height: 400px;
+    max-height: 540px;
     overflow-x: auto;
     overflow-y: auto;
     margin: 20px auto;

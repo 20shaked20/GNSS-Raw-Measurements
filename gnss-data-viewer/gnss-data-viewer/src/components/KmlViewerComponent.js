@@ -32,9 +32,16 @@ const KmlViewerComponent = ({ kmlFile }) => {
 
         kmlLayerRef.current = omnivore.kml(kmlUrl, null, L.geoJson(null, {
           pointToLayer: (feature, latlng) => {
+            let iconUrl = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png';
+            if (feature.properties.styleUrl === '#26') {
+              iconUrl = 'http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png';
+            } else if (feature.properties.styleUrl === '#29') {
+              iconUrl = 'http://maps.google.com/mapfiles/kml/shapes/placemark_square.png';
+            }
+
             return L.marker(latlng, {
               icon: L.icon({
-                iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+                iconUrl: iconUrl,
                 iconSize: [25, 41],
                 iconAnchor: [12, 41],
                 popupAnchor: [1, -34],
