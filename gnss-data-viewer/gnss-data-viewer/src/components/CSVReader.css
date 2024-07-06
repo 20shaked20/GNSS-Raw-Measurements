@@ -1,0 +1,30 @@
+/* src/components/CSVReader.css */
+.table-container {
+    max-width: 100%;
+    max-height: 400px;
+    overflow-x: auto;
+    overflow-y: auto;
+    margin: 20px auto;
+    border: 1px solid black;
+    border-collapse: collapse;
+  }
+  
+  .data-table {
+    width: 100%;
+    border: 1px solid black;
+    border-collapse: collapse;
+  }
+  
+  .data-table th, .data-table td {
+    padding: 10px;
+    border: 1px solid gray;
+    background: papayawhip;
+    text-align: left;
+  }
+  
+  .data-table th {
+    background: aliceblue;
+    color: black;
+    font-weight: bold;
+  }
+  

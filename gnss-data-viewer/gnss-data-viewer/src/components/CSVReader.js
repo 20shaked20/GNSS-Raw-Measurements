@@ -4,6 +4,7 @@ import axios from 'axios';
 import { useTable } from 'react-table';
 import Papa from 'papaparse';
 import Select from 'react-select';
+import './CSVReader.css';  // Import the CSS file
 
 const CSVReaderComponent = () => {
   const [data, setData] = useState([]);
@@ -90,37 +91,39 @@ const CSVReaderComponent = () => {
         onChange={handleFilterChange}
         placeholder="Select constellations to filter"
       />
-      {filteredData.length > 0 ? (
-        <table {...getTableProps()} style={{ border: 'solid 1px black', margin: '20px auto', borderCollapse: 'collapse' }}>
-          <thead>
-            {headerGroups.map(headerGroup => (
-              <tr {...headerGroup.getHeaderGroupProps()}>
-                {headerGroup.headers.map(column => (
-                  <th {...column.getHeaderProps()} style={{ borderBottom: 'solid 3px red', background: 'aliceblue', color: 'black', fontWeight: 'bold' }}>
-                    {column.render('Header')}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody {...getTableBodyProps()}>
-            {rows.map(row => {
-              prepareRow(row);
-              return (
-                <tr {...row.getRowProps()}>
-                  {row.cells.map(cell => (
-                    <td {...cell.getCellProps()} style={{ padding: '10px', border: 'solid 1px gray', background: 'papayawhip' }}>
-                      {cell.value !== null && cell.value !== undefined ? cell.render('Cell') : ''}
-                    </td>
+      <div className="table-container">
+        {filteredData.length > 0 ? (
+          <table {...getTableProps()} className="data-table">
+            <thead>
+              {headerGroups.map(headerGroup => (
+                <tr {...headerGroup.getHeaderGroupProps()}>
+                  {headerGroup.headers.map(column => (
+                    <th {...column.getHeaderProps()}>
+                      {column.render('Header')}
+                    </th>
                   ))}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      ) : (
-        <p>No data available</p>
-      )}
+              ))}
+            </thead>
+            <tbody {...getTableBodyProps()}>
+              {rows.map(row => {
+                prepareRow(row);
+                return (
+                  <tr {...row.getRowProps()}>
+                    {row.cells.map(cell => (
+                      <td {...cell.getCellProps()}>
+                        {cell.value !== null && cell.value !== undefined ? cell.render('Cell') : ''}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <p>No data available</p>
+        )}
+      </div>
     </div>
   );
 };
