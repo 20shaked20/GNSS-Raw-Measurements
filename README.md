@@ -87,6 +87,7 @@ To test the program, utilize the log files located in the "data" folder. These f
 </br>
 
 ## How To Run :joystick:
+### Running gnss_processing.py:
 * Clone repositoy
 * Navigate to the directory containing the cloned repository.
 * Make sure you have installed ``requirements.txt`` - write in terminal -> ``pip install -r requirements.txt`` </br>
@@ -100,12 +101,19 @@ To test the program, utilize the log files located in the "data" folder. These f
   2. ``gnss_visualition.kml`` - a KML file that can be used to present the coordiantes of our trip visually. </br>
   3. ``Rms_Results.txt`` - we used this mainly for debbuging, but we kept it as it's a nice to have - presents some details about our calculations of RMS </br>
 
-</br>
-</br>
-
 > [!NOTE]
 > in case you want to run only rms_positioning.py or gnss_to_csv.py, you can do that, just make sure to follow the instructions: first run gnss_to_csv.py, get the correct outputting csv (the name is important, as the rms_positoning using it to get the data), and then run the rms_positoning.
 
+### Running live_gnss_processing.py:
+* Connect your Android device to your PC using a USB cable.
+* Enable USB debugging on your Android device.
+* Make sure you have the Android Platform Tools installed and accessible in your PATH.
+* Run `live_gnss_processing.py` with the required arguments:
+```
+python live_gnss_processing.py --device <device_serial> --output_dir <output_directory>
+```
+  - Replace <device_serial> with your Android device's serial number and <output_directory> with the directory where you want to save the recorded data.
+* The script will record live GNSS data from your device and process it.
 
 ## Topic Overview - for the main assignment of the course :flying_saucer:
 The project focuses on expanding an initial task to develop a robust navigation system based on raw Global Navigation Satellite System (GNSS) measurements. The primary goal is to calculate real-time positions using an efficient and accurate algorithm. This system will incorporate advanced functionalities such as satellite filtering by constellation and signal strength, identification of "false" satellites, and handling disruptions. The project will also implement a disturbance detection algorithm to manage and mitigate the effects of disruptions.
