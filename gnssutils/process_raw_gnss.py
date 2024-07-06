@@ -1,3 +1,16 @@
+"""
+GNSS Data Processing and Satellite Position Calculation
+
+This script provides functions for processing GNSS (Global Navigation Satellite System) data
+and calculating satellite positions based on ephemeris data. It supports various GNSS
+constellations, with a focus on GPS and GLONASS.
+
+Key features:
+- Reading and preprocessing raw GNSS measurements from CSV files
+- Calculating satellite positions for GPS and GLONASS constellations
+- Converting between different time formats (Unix, GPS)
+"""
+
 import csv
 from datetime import datetime, timedelta, timezone
 import pandas as pd
@@ -89,7 +102,6 @@ def preprocess_measurements(measurements):
     
     return measurements
 
-#TODO : understand why the hell is not working.. :(
 def calculate_glonass_position(ephemeris, transmit_time):
     """
     Calculates the satellite positions for GLONASS based on ephemeris data.
