@@ -33,15 +33,6 @@ See at our wiki page [How To Run](https://github.com/20shaked20/GNSS-Raw-Measure
 The project focuses on expanding an initial task to develop a robust navigation system based on raw Global Navigation Satellite System (GNSS) measurements. The primary goal is to calculate real-time positions using an efficient and accurate algorithm. This system will incorporate advanced functionalities such as satellite filtering by constellation and signal strength, identification of "false" satellites, and handling disruptions. The project will also implement a disturbance detection algorithm to manage and mitigate the effects of disruptions.
 </br>
 
-## Previous Works :artificial_satellite:
-Previous works in the field of GNSS-based navigation systems have laid the foundation for this project. Early GNSS systems primarily focused on providing basic positioning services using pseudorange measurements from satellites. Over time, the introduction of advanced algorithms, such as those leveraging least squares optimization, has improved the accuracy and reliability of GNSS positioning.
-</br>
-Several studies have explored methods for filtering satellites based on various criteria, including signal strength (Carrier-to-Noise density ratio, CN0) and constellation (e.g., GPS, GLONASS, Galileo). Techniques for identifying and mitigating the impact of multipath and "false" satellites have also been investigated, aiming to enhance the reliability of GNSS measurements in challenging environments.
-</br>
-Furthermore, the detection and handling of disruptions, such as those caused by intentional jamming or environmental factors, have been critical areas of research. Algorithms for disturbance detection and mitigation, including those that can distinguish between genuine signal anomalies and intentional interference, have been developed to ensure the robustness of GNSS-based navigation systems.
-</br>
-By building on these previous works, this project aims to create a comprehensive navigation system capable of real-time position calculation, effective satellite filtering, and robust handling of disruptions, providing a significant advancement in GNSS-based navigation technology.
-</br>
 
 ## References :paperclip:
 1. **Advanced GNSS Algorithms for Real-Time Positioning** - A special issue of Remote Sensing focuses on GNSS advanced positioning algorithms and innovative applications. It covers topics related to precise point positioning (PPP), real-time kinematic (RTK) schemes, low-cost GNSS, and more. </br>
