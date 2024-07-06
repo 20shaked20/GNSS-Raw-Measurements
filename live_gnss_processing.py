@@ -17,6 +17,9 @@ from gnssutils import (
     check_cross_correlation, LIGHTSPEED
 )
 
+from rms_positioning import process_satellite_data, save_results_to_text, add_position_data_to_csv
+
+
 pd.options.mode.chained_assignment = None
 
 # Cache for satellite data
@@ -160,18 +163,27 @@ def process_new_data(file_path, measurements, EphemManager, last_processed_time)
         traceback.print_exc()
         return last_processed_time
 
-def main():
-    """
-    Main function that orchestrates the GNSS data processing and output generation.
-    """
-    # Cleanup in case there are old files
+def clean_data():
     old_csv_file = "gnss_measurements_output.csv"
     if os.path.exists(old_csv_file):
         os.remove(old_csv_file)
-    
+
     old_init_gnss = "initial_gnss_log.txt"
     if os.path.exists(old_init_gnss):
         os.remove(old_init_gnss)
+
+    old_kml = "gnss_visualization.kml"
+    if os.path.exists(old_kml):
+        os.remove(old_kml)
+
+    old_results = "RmsResults.txt"
+    if os.path.exists(old_results):
+        os.remove(old_results)
+
+
+def main():
+    
+    clean_data()
     
     directory_to_pull = '/storage/emulated/0/Android/data/com.android.gpstest/files/gnss_log/'
     destination = './'
@@ -180,7 +192,6 @@ def main():
     last_checked_times = {}
     last_processed_time = None
 
-    # Waiting for the initial file to be generated
     initial_file = None
     while not initial_file:
         files = get_files_in_directory(directory_to_pull)
@@ -191,7 +202,6 @@ def main():
             print("Waiting for the initial file to be generated...")
             time.sleep(5)
 
-    # Initial setup
     initial_data = pull_file(initial_file)
     destination_file = f'{destination}/initial_gnss_log.txt'
     with open(destination_file, 'w') as file:
@@ -202,6 +212,8 @@ def main():
     last_processed_time = measurements['UnixTime'].max()
     
     EphemManager = EphemerisManager()
+    kml_update_interval = 1  # Update KML 1 sec
+    last_kml_update_time = time.time()
 
     while True:
         try:
@@ -225,6 +237,16 @@ def main():
                         last_processed_time = process_new_data(destination_file, measurements, EphemManager, last_processed_time)
 
                     last_checked_times[file] = modification_time
+
+            current_time = time.time()
+            if current_time - last_kml_update_time >= kml_update_interval:
+                data = pd.read_csv("gnss_measurements_output.csv")
+                results = process_satellite_data(data, "gnss_visualization.kml")
+                save_results_to_text(results, "RmsResults.txt")
+                add_position_data_to_csv(results, "gnss_measurements_output.csv", "gnss_measurements_output.csv")
+                last_kml_update_time = current_time
+                print("KML file updated successfully.")
+
         except Exception as e:
             print(f"Error in main loop: {e}")
 

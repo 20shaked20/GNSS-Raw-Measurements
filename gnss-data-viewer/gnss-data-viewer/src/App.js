@@ -1,3 +1,4 @@
+// src/App.js
 import React, { useState } from 'react';
 import './App.css';
 import SatelliteView from './components/SatelliteView';
@@ -21,6 +22,14 @@ function App() {
     }
   };
 
+  const startLiveProcessing = () => {
+    setCurrentView('KML_VIEWER');
+  };
+
+  const stopLiveProcessing = () => {
+    setCurrentView('LOG_FILE_SELECTOR');
+  };
+
   return (
     <div className="App">
       <header>
@@ -33,7 +42,7 @@ function App() {
         </nav>
       </header>
       <main>
-        {currentView === 'LOG_FILE_SELECTOR' && <LogFileSelectorComponent />}
+        {currentView === 'LOG_FILE_SELECTOR' && <LogFileSelectorComponent onStartLiveProcessing={startLiveProcessing} onStopLiveProcessing={stopLiveProcessing} />}
         {currentView === 'SAT_VIEW' && <SatelliteView />}
         {currentView === 'KML_VIEWER' && <KmlViewerComponent kmlFile={selectedKmlFile} />}
         {currentView === 'KML_VIEWER' && (

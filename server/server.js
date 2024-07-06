@@ -1,19 +1,18 @@
-// server/server.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const bodyParser = require('body-parser');
 const fs = require('fs');
-const { spawn, execSync } = require('child_process'); 
-
+const { spawn, execSync } = require('child_process');
 
 const app = express();
 const PORT = 5000;
 
-app.use(cors()); // Enable CORS for all routes
+let liveProcess = null;
+
+app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
 
 app.get('/gnss-data', (req, res) => {
   res.sendFile(path.join(__dirname, '../gnss_measurements_output.csv'));
@@ -37,11 +36,11 @@ app.post('/run-gnss', (req, res) => {
     res.status(400).json({ error: 'No file name provided' });
     return;
   }
-  
+
   const pythonExecutable = execSync('python3 -c "import sys; print(sys.executable)"').toString().trim();
   const process = spawn(pythonExecutable, ['gnss_processing.py'], { cwd: path.join(__dirname, '../') });
   const filePath = path.join(__dirname, '../data', logFileName);
-  
+
   process.stdout.on('data', (data) => {
     console.log(`stdout: ${data}`);
     if (data.toString().includes('Enter the GNSS log file name: ')) {
@@ -69,6 +68,40 @@ app.post('/run-gnss', (req, res) => {
   });
 });
 
+app.post('/run-live-gnss', (req, res) => {
+  const pythonExecutable = execSync('python3 -c "import sys; print(sys.executable)"').toString().trim();
+  liveProcess = spawn(pythonExecutable, ['live_gnss_processing.py'], { cwd: path.join(__dirname, '../') });
+
+  liveProcess.stdout.on('data', (data) => {
+    console.log(`stdout: ${data}`);
+  });
+
+  liveProcess.stderr.on('data', (data) => {
+    console.error(`stderr: ${data}`);
+  });
+
+  liveProcess.on('close', (code) => {
+    if (code !== 0) {
+      console.error(`live_gnss_processing.py process exited with code ${code}`);
+    }
+  });
+
+  res.json({ message: 'Live processing started' });
+});
+
+app.post('/stop-live-gnss', (req, res) => {
+  if (liveProcess) {
+    liveProcess.kill();
+    liveProcess = null;
+    res.json({ message: 'Live processing stopped' });
+  } else {
+    res.status(400).json({ error: 'No live processing running' });
+  }
+});
+
+app.get('/live-kml', (req, res) => {
+  res.sendFile(path.join(__dirname, '../gnss_visualization.kml'));
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
