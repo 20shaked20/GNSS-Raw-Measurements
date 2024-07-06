@@ -89,50 +89,6 @@ def preprocess_measurements(measurements):
     
     return measurements
 
-#TODO : understand why the hell is not working.. :(
-def calculate_glonass_position(ephemeris, transmit_time):
-    """
-    Calculates the satellite positions for GLONASS based on ephemeris data.
-
-    Args:
-        ephemeris (pd.DataFrame): DataFrame containing the ephemeris data for GLONASS.
-        transmit_time (pd.Series): Series containing the transmit times.
-
-    Returns:
-        pd.DataFrame: DataFrame containing the calculated satellite positions.
-    """
-
-    # Initialize DataFrame to store satellite positions
-    sv_position = pd.DataFrame()
-    sv_position['sv'] = ephemeris.index
-    sv_position.set_index('sv', inplace=True)
-
-    # Adjust transmit time by GLONASS time offset
-    adjusted_transmit_time = transmit_time + GLONASS_TIME_OFFSET
-
-    # Compute the time from ephemeris reference epoch
-    sv_position['t_k'] = adjusted_transmit_time - ephemeris['MessageFrameTime']
-
-    # Compute the satellite position at t_k
-    sv_position['x_k'] = ephemeris['X'] + ephemeris['dX'] * sv_position['t_k']
-    sv_position['y_k'] = ephemeris['Y'] + ephemeris['dY'] * sv_position['t_k']
-    sv_position['z_k'] = ephemeris['Z'] + ephemeris['dZ'] * sv_position['t_k']
-
-    # Apply Earth rotation correction
-    rotation_angle = OMEGA_E_DOT * sv_position['t_k']
-    cos_angle = np.cos(rotation_angle)
-    sin_angle = np.sin(rotation_angle)
-
-    sv_position['x_k_corrected'] = sv_position['x_k'] * cos_angle + sv_position['y_k'] * sin_angle
-    sv_position['y_k_corrected'] = -sv_position['x_k'] * sin_angle + sv_position['y_k'] * cos_angle
-    sv_position['z_k_corrected'] = sv_position['z_k']  # Z-coordinate remains the same
-
-    # Calculate the clock correction
-    sv_position['delT_sv'] = ephemeris['SVclockBias'] + ephemeris['SVrelFreqBias'] * (adjusted_transmit_time - ephemeris['t_oc'])
-
-    return sv_position
-
-
 def calculate_satellite_position(ephemeris, transmit_time):
     """
     Calculates the satellite positions based on ephemeris data.

@@ -93,59 +93,6 @@ def positioning_function(x, sat_positions, observed_pseudoranges, weights):
     # Return the weighted residuals to account for the reliability of each measurement.
     return weights * residuals
 
-def raim_algorithm(sat_positions, pseudoranges, weights, confidence_level=0.95):
-    """
-    Performs Receiver Autonomous Integrity Monitoring (RAIM) to detect faults in satellite measurements.
-
-    RAIM aims to improve the reliability of GNSS by identifying and excluding faulty satellite measurements.
-    It compares the residuals of pseudoranges to a statistical threshold to detect outliers.
-
-    Args:
-        sat_positions (np.array): Array of satellite positions (3D coordinates).
-        pseudoranges (np.array): Array of observed pseudoranges.
-        weights (np.array): Array of weights for each satellite measurement.
-        confidence_level (float): Confidence level for RAIM detection.
-
-    Returns:
-        tuple: Estimated receiver position and list of excluded satellites.
-    """
-    num_satellites = len(sat_positions)
-    degrees_of_freedom = num_satellites - 4  # 4 parameters: x, y, z, and receiver clock bias
-    threshold = chi2.ppf(confidence_level, degrees_of_freedom)
-
-    # Initial position calculation using the mean of satellite positions as a guess.
-    initial_guess = np.mean(sat_positions, axis=0)
-    
-    # Perform least squares optimization to minimize the residuals and find the best estimate of the receiver's position.
-    res = least_squares(positioning_function, initial_guess, args=(sat_positions, pseudoranges, weights))
-    position = res.x
-    
-    # Calculate residuals and test statistic for the initial solution.
-    residuals = positioning_function(position, sat_positions, pseudoranges, weights)
-    test_statistic = np.sum(residuals**2)
-
-    # If the test statistic is below the threshold, no satellites are excluded.
-    if test_statistic < threshold:
-        return position, []
-
-    excluded_satellites = []
-    
-    # Try excluding each satellite one by one to see if the test statistic improves.
-    for i in range(len(sat_positions)):
-        temp_sat_positions = np.delete(sat_positions, i, axis=0)
-        temp_pseudoranges = np.delete(pseudoranges, i)
-        temp_weights = np.delete(weights, i)
-        temp_position = least_squares(positioning_function, initial_guess, args=(temp_sat_positions, temp_pseudoranges, temp_weights)).x
-        temp_residuals = positioning_function(temp_position, temp_sat_positions, temp_pseudoranges, temp_weights)
-        temp_test_statistic = np.sum(temp_residuals**2)
-
-        if temp_test_statistic < test_statistic:
-            position = temp_position
-            test_statistic = temp_test_statistic
-            excluded_satellites = [i]
-
-    return position, excluded_satellites
-
 def robust_positioning_function(x, sat_positions, observed_pseudoranges, weights):
     """
     Calculates residuals between observed and estimated pseudoranges with robust weighting.
