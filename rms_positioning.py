@@ -1,6 +1,5 @@
 """
-GNSS Positioning Script
-
+GNSS Positioning Script with NLP Fixes Integration
 """
 
 import argparse
@@ -11,6 +10,7 @@ from scipy.optimize import least_squares
 import navpy
 import simplekml
 import logging
+from tqdm import tqdm
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -40,30 +40,28 @@ def process_android_fixes(csv_path, kml):
         data = pd.read_csv(csv_path)
     except FileNotFoundError:
         logging.warning(f"Android fixes file '{csv_path}' not found. Skipping Android fixes processing.")
-        return kml
+        return kml, None
     except Exception as e:
         logging.error(f"Error reading Android fixes file: {e}")
-        return kml
+        return kml, None
 
-    data = data[data['Provider'].isin(['GPS', 'FLP'])]
+    data = data[data['Provider'].isin(['NLP', 'nlp'])]
     
-    gps_style = simplekml.Style()
-    gps_style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png'
-    gps_style.iconstyle.color = simplekml.Color.blue
+    nlp_style = simplekml.Style()
+    nlp_style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/shapes/placemark_square.png'
+    nlp_style.iconstyle.color = simplekml.Color.red
     
-    flp_style = simplekml.Style()
-    flp_style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/shapes/placemark_square.png'
-    flp_style.iconstyle.color = simplekml.Color.red
-    
+    nlp_fixes = []
+
     for _, row in data.iterrows():
         pnt = kml.newpoint(name=f"Android {row['Provider']} - {row['UnixTimeMillis']}")
         pnt.coords = [(row['LongitudeDegrees'], row['LatitudeDegrees'], row['AltitudeMeters'])]
         pnt.timestamp.when = pd.to_datetime(row['UnixTimeMillis'], unit='ms').strftime("%Y-%m-%dT%H:%M:%SZ")
+        pnt.style = nlp_style
+        nlp_fixes.append((row['UnixTimeMillis'], row['LongitudeDegrees'], row['LatitudeDegrees'], row['AltitudeMeters']))
         
-        pnt.style = gps_style if row['Provider'] == 'GPS' else flp_style
-    
     logging.info(f"Added {len(data)} Android fixes to KML.")
-    return kml
+    return kml, nlp_fixes
 
 def positioning_function(x, sat_positions, observed_pseudoranges, weights):
     """
@@ -187,26 +185,49 @@ def detect_spoofing(group, residuals, rms, lla):
         tuple: List of spoofed satellites and the reason for spoofing detection.
     """
     spoofed_satellites = []
+    spoofing_reasons = []
     
     # Check if the RMS error is excessively high.
     if rms > 2000:
         spoofed_satellites.extend(group['SatPRN (ID)'].tolist())
-        return spoofed_satellites, "High RMS"
+        spoofing_reasons.append("High RMS")
     
     # Check for unreasonable altitude.
     if lla[2] < -1000 or lla[2] > 100000:  # -1km to 100km range
         spoofed_satellites.extend(group['SatPRN (ID)'].tolist())
-        return spoofed_satellites, "Unreasonable altitude"
+        spoofing_reasons.append("Unreasonable altitude")
     
     # Individual satellite checks using Z-scores.
     z_scores = np.abs((residuals - np.mean(residuals)) / np.std(residuals))
     threshold = 3 
     spoofed_indices = np.where(z_scores > threshold)[0]
-    spoofed_satellites.extend(group.iloc[spoofed_indices]['SatPRN (ID)'].tolist())
+    if len(spoofed_indices) > 0:
+        spoofed_satellites.extend(group.iloc[spoofed_indices]['SatPRN (ID)'].tolist())
+        spoofing_reasons.append("Individual satellite anomalies")
     
-    return spoofed_satellites, "Individual satellite anomalies" if spoofed_satellites else "No spoofing detected"
+    return spoofed_satellites, spoofing_reasons if spoofing_reasons else [""]
 
-def process_epoch(gps_time, group, kml, previous_position):
+def check_nlp_fix_consistency(nlp_fix, sat_positions, pseudoranges, clock_bias):
+    """
+    Checks consistency of NLP fix with satellite data.
+
+    Args:
+        nlp_fix (tuple): NLP fix coordinates (UnixTimeMillis, Longitude, Latitude, Altitude).
+        sat_positions (np.array): Array of satellite positions.
+        pseudoranges (np.array): Array of observed pseudoranges.
+        clock_bias (float): Receiver clock bias.
+
+    Returns:
+        np.array: Boolean array indicating inconsistent satellites.
+    """
+    nlp_position_ecef = navpy.lla2ecef(nlp_fix[2], nlp_fix[1], nlp_fix[3], latlon_unit='deg')
+    estimated_ranges = np.sqrt(((sat_positions - nlp_position_ecef)**2).sum(axis=1)) + clock_bias
+    deviations = np.abs(estimated_ranges - pseudoranges)
+    
+    threshold = 1000  # meters
+    return deviations > threshold
+
+def process_epoch(gps_time, group, kml, previous_position, nlp_fixes):
     """
     Processes data for a single epoch to compute position and detect spoofing.
 
@@ -218,6 +239,7 @@ def process_epoch(gps_time, group, kml, previous_position):
         group (pd.DataFrame): DataFrame containing satellite measurements for the epoch.
         kml (simplekml.Kml): KML object for visualization.
         previous_position (np.array): Previous estimated position for detecting sudden jumps.
+        nlp_fixes (list): List of NLP fixes.
 
     Returns:
         dict: Results including position, RMS error, spoofed satellites, and reason for spoofing detection.
@@ -247,14 +269,31 @@ def process_epoch(gps_time, group, kml, previous_position):
     residuals = estimated_ranges + clock_bias - pseudoranges  # Including receiver clock bias
 
     all_satellites = group['SatPRN (ID)'].tolist()
-    spoofed_satellites, spoofing_reason = detect_spoofing(group, residuals, rms, lla)
+    spoofed_satellites, spoofing_reasons = detect_spoofing(group, residuals, rms, lla)
     
+    nlp_inconsistent_satellites = []
+    for nlp_fix in nlp_fixes:
+        if abs(nlp_fix[0] - gps_time_dt.timestamp() * 1000) <= 60000:  # Within one minute
+            inconsistent_satellites = check_nlp_fix_consistency(nlp_fix, sat_positions, pseudoranges, clock_bias)
+            new_inconsistent = group.iloc[inconsistent_satellites]['SatPRN (ID)'].tolist()
+            nlp_inconsistent_satellites.extend(new_inconsistent)
+
+    # Remove duplicates
+    nlp_inconsistent_satellites = list(set(nlp_inconsistent_satellites))
+
+    if nlp_inconsistent_satellites:
+        spoofed_satellites.extend(nlp_inconsistent_satellites)
+        spoofing_reasons.append("Inconsistent with NLP fix")
+
+    # Remove duplicates from spoofed_satellites
+    spoofed_satellites = list(set(spoofed_satellites))
+
     # Check for sudden position jumps.
     if previous_position is not None:
         distance = np.linalg.norm(position - previous_position)
         if distance > 1000:  # 1km threshold, adjust as needed
             spoofed_satellites = group['SatPRN (ID)'].tolist()
-            spoofing_reason = "Sudden position jump"
+            spoofing_reasons.append("Sudden position jump")
     
     return {
         'GPS Time': gps_time,
@@ -264,10 +303,10 @@ def process_epoch(gps_time, group, kml, previous_position):
         'Spoofed Satellites': spoofed_satellites,
         'Non_spoofed Satellites': [sat for sat in all_satellites if sat not in spoofed_satellites],
         'Excluded Satellites': [all_satellites[i] for i in excluded_satellites],
-        'Spoofing Reason': spoofing_reason
+        'Spoofing Reason': ', '.join(spoofing_reasons)
     }
 
-def process_satellite_data(data, kml):
+def process_satellite_data(data, kml, nlp_fixes):
     """
     Processes GNSS data and generates KML visualization.
 
@@ -285,9 +324,9 @@ def process_satellite_data(data, kml):
     results = []
     previous_position = None
     
-    for gps_time, group in grouped:
+    for gps_time, group in tqdm(grouped, desc="Processing Satellite Data"):  # Adding progress bar for epoch processing
         try:
-            result = process_epoch(gps_time, group, kml, previous_position)
+            result = process_epoch(gps_time, group, kml, previous_position, nlp_fixes)
             results.append(result)
             previous_position = result['Estimated Position ECEF']
         except ValueError as e:
@@ -308,7 +347,7 @@ def save_results_to_text(results, output_txt):
     """
     logging.info("Saving to RmsResults.txt... \n")
     with open(output_txt, 'w') as f:
-        for result in results:
+        for result in tqdm(results, desc="Saving results to text"):  # Adding progress bar for saving results
             f.write(f"GPS Time: {result['GPS Time']}\n")
             f.write(f"Estimated Position ECEF (X, Y, Z): {result['Estimated Position ECEF']}\n")
             f.write(f"Estimated Position LLA (Lat, Lon, Alt): {result['Estimated Position LLA']}\n")
@@ -321,7 +360,6 @@ def save_results_to_text(results, output_txt):
             
             f.write(f"Spoofed Satellites: {', '.join(map(str, result['Spoofed Satellites']))}\n")
             f.write(f"Non-spoofed Satellites: {', '.join(map(str, non_spoofed_satellites))}\n")
-            f.write(f"Excluded Satellites: {', '.join(map(str, result['Excluded Satellites']))}\n")
             f.write("-" * 50 + "\n")
 
 def add_position_data_to_csv(results, input_csv, output_csv):
@@ -352,7 +390,7 @@ def add_position_data_to_csv(results, input_csv, output_csv):
     }
     encountered_timestamps = set()
 
-    for result in results:
+    for result in tqdm(results, desc="Adding position data to CSV"):  # Adding progress bar for CSV update
         gps_time = result['GPS Time']
         if gps_time not in encountered_timestamps:
             add_to_csv['GPS Time'].append(gps_time)
@@ -386,8 +424,8 @@ def main():
     args = parse_arguments()
     data = read_gnss_data(args.input_file)
     kml = simplekml.Kml()
-    results = process_satellite_data(data, kml)
-    kml = process_android_fixes('android_fixes.csv', kml)
+    kml, nlp_fixes = process_android_fixes(args.android_fixes, kml)
+    results = process_satellite_data(data, kml, nlp_fixes)
     kml.save(args.output_kml)
     save_results_to_text(results, args.output_txt)
     add_position_data_to_csv(results, args.input_file, args.input_file)
