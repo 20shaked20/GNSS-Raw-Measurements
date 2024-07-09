@@ -5,6 +5,8 @@ This script processes GNSS log files to extract, preprocess, and analyze GNSS me
 ensure data quality, including AGC/CN0 checks, SVID sanity checks, cross-correlation checks, and time consistency checks.
 The script also calculates satellite positions and flags suspicious measurements (which might indicate on satellite spoofing, etc..)
 
+Some data of the raw data that is available in the 'data' folder is attributed to:
+Tomaštík, Julián; Varga, Matej (2023), “Raw GNSS data, Xiaomi Mi 8, 10 minutes, 3 points, 40 days”, Mendeley Data, V3, doi: 10.17632/5prmtwgph3.3
 """
 
 import traceback
@@ -12,6 +14,7 @@ import os
 import argparse
 import pandas as pd
 import numpy as np
+from tqdm import tqdm  # Importing tqdm for progress bar
 
 from gnssutils import (
     EphemerisManager, read_data, preprocess_measurements, calculate_satellite_position,
@@ -20,6 +23,16 @@ from gnssutils import (
 )
 
 pd.options.mode.chained_assignment = None
+
+
+def clean_data():
+    files_to_clean = ['gnss_measurements_output.csv', 'initial_gnss_log.txt', 'gnss_visualization.kml', 'RmsResults.txt', 'android_fixes.csv']
+    for file in files_to_clean:
+        try:
+            os.remove(file)
+        except FileNotFoundError:
+            print(f"{file} couldn't be found in the current directory, assuming it's OK and continuing cleanup")
+            continue
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Process GNSS log files for positioning.')
@@ -31,10 +44,7 @@ def parse_arguments():
     return args
 
 def main():
-    # Cleanup in case there are old files
-    old_csv_file = "gnss_measurements_output.csv"
-    if os.path.exists(old_csv_file):
-        os.remove(old_csv_file)
+    clean_data()
 
     args = parse_arguments()
     unparsed_measurements, android_fixes = read_data(args.input_file)
@@ -45,8 +55,10 @@ def main():
     manager = EphemerisManager(args.data_directory)
         
     csv_output = []
-    for epoch in measurements['Epoch'].unique():
-        one_epoch = measurements.loc[(measurements['Epoch'] == epoch) & (measurements['prSeconds'] < 0.1)] 
+    unique_epochs = measurements['Epoch'].unique()
+
+    for epoch in tqdm(unique_epochs, desc="Processing epochs"):  # Adding progress bar for epoch processing
+        one_epoch = measurements.loc[(measurements['Epoch'] == epoch) & (measurements['prSeconds'] < 0.1)]
         one_epoch = one_epoch.drop_duplicates(subset='SvName').set_index('SvName')
         if len(one_epoch.index) > 4:
             timestamp = one_epoch.iloc[0]['UnixTime'].to_pydatetime(warn=False)
@@ -80,6 +92,7 @@ def main():
                     "SatZ": sv_position.at[sv, 'z_k'] if sv in sv_position.index else np.nan,
                     "Pseudo-Range": one_epoch.at[sv, 'PrM_corrected'],
                     "CN0": one_epoch.at[sv, 'Cn0DbHz'],
+                    "Frequency-Band": one_epoch.at[sv, 'SignalType'],
                     "Doppler": one_epoch.at[sv, 'DopplerShiftHz'] if doppler_calculated else 'NaN',
                     "Suspicious": (one_epoch.at[sv, 'suspicious'] | 
                                    one_epoch.at[sv, 'corr_suspicious'])
@@ -93,4 +106,4 @@ try:
     main()
 except Exception as e:
     print(f"An error occurred: {e}")
-    traceback.print_exc() 
+    traceback.print_exc()

@@ -203,5 +203,5 @@ class EphemerisManager:
 if __name__ == '__main__':
     repo = EphemerisManager()
     target_time = datetime(2024, 1, 9, 12, 0, 0, tzinfo=timezone.utc)
-    data = repo.get_ephemeris(target_time, ['G01', 'G03','C11','E14', 'R06'])
+    data = repo.get_ephemeris(target_time, ['G01', 'G03','C11','E14', 'E05'])
     print(data)

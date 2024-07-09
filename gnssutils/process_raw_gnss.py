@@ -45,6 +45,35 @@ def read_data(input_filepath):
 
     return pd.DataFrame(measurements[1:], columns=measurements[0]), pd.DataFrame(android_fixes[1:], columns = android_fixes[0])
 
+def infer_signal_type(row):
+    constellation = row['Constellation']
+    frequency = row['CarrierFrequencyHz']
+    
+    if pd.isna(frequency):
+        return 'Unknown'
+    
+    if constellation == 'G':  # GPS
+        if np.isclose(frequency, 1575.42e6, atol=1e6):
+            return 'L1'
+        elif np.isclose(frequency, 1176.45e6, atol=1e6):
+            return 'L5'
+    elif constellation == 'E':  # Galileo
+        if np.isclose(frequency, 1575.42e6, atol=1e6):
+            return 'E1'
+        elif np.isclose(frequency, 1176.45e6, atol=1e6):
+            return 'E5a'
+        elif np.isclose(frequency, 1207.14e6, atol=1e6):
+            return 'E5b'
+    elif constellation == 'C':  # Beidou
+        if np.isclose(frequency, 1561.098e6, atol=1e6):
+            return 'B1'
+        elif np.isclose(frequency, 1207.14e6, atol=1e6):
+            return 'B2'
+        elif np.isclose(frequency, 1268.52e6, atol=1e6):
+            return 'B3'
+    return 'Unknown'
+
+
 def preprocess_measurements(measurements):
     """
     Preprocesses the raw GNSS measurements.
@@ -56,12 +85,11 @@ def preprocess_measurements(measurements):
         pd.DataFrame: DataFrame containing the preprocessed GNSS measurements.
     """
     # Format satellite IDs
-    measurements.loc[measurements['Svid'].str.len() == 1, 'Svid'] = '0' + measurements['Svid']
+    measurements['Svid'] = measurements['Svid'].astype(str).str.zfill(2)
     constellation_map = {
         '1': 'G',  # GPS
-        # Uncomment below lines to include other constellations
-        #'3': 'R',  # GLONASS
-        #'5': 'E',  # Galileo
+        #'3': 'R',  # GLONASS (if needed)
+        #'5': 'E'  # Galileo
         #'6': 'C',  # Beidou
     }
     measurements['Constellation'] = measurements['ConstellationType'].map(constellation_map)
@@ -71,9 +99,12 @@ def preprocess_measurements(measurements):
     # Convert columns to numeric representation and handle missing data robustly
     numeric_cols = ['Cn0DbHz', 'TimeNanos', 'FullBiasNanos', 'ReceivedSvTimeNanos',
                     'PseudorangeRateMetersPerSecond', 'ReceivedSvTimeUncertaintyNanos',
-                    'BiasNanos', 'TimeOffsetNanos']
+                    'BiasNanos', 'TimeOffsetNanos', 'CarrierFrequencyHz']
     for col in numeric_cols:
         measurements[col] = pd.to_numeric(measurements[col], errors='coerce').fillna(0)
+
+    # Add the SignalType column based on constellation and signal type mapping
+    measurements['SignalType'] = measurements.apply(infer_signal_type, axis=1)
 
     # Generate GPS and Unix timestamps
     measurements['GpsTimeNanos'] = measurements['TimeNanos'] - (measurements['FullBiasNanos'] - measurements['BiasNanos'])
