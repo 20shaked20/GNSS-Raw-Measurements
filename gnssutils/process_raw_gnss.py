@@ -89,7 +89,7 @@ def preprocess_measurements(measurements):
     constellation_map = {
         '1': 'G',  # GPS
         #'3': 'R',  # GLONASS (if needed)
-        '5': 'E'  # Galileo
+        #'5': 'E'  # Galileo
         #'6': 'C',  # Beidou
     }
     measurements['Constellation'] = measurements['ConstellationType'].map(constellation_map)

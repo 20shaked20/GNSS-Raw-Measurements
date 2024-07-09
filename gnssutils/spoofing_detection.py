@@ -36,6 +36,7 @@ Notes:
 from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
+import navpy
 from .constants import AGC_THRESHOLD, CN0_THRESHOLD
 
 def check_agc_cn0(measurements):
