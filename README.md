@@ -54,6 +54,10 @@ More Information at our [Wiki](https://github.com/20shaked20/GNSS-Raw-Measuremen
 - In this page you can see the calculated location on a map
 ![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/93203695/b7ef7be2-5851-468a-939f-e868ef8e1c3f)
 
+### Example of our fixes kml:
+![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/93203695/64ea233d-3969-485e-8ba6-04af490c16c9)
+- What we see on land, the black square is fix by NLP from android's cellular reception, surrounded by our GNSS calculations.
+- What is on the sea, is the GPS jamming.
 
 ## Testing :mag:
 To test the program, utilize the log files located in the "data" folder. These files were specifically chosen for testing purposes.
