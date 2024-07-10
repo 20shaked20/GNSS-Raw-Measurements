@@ -28,6 +28,25 @@ More Information at our [Wiki](https://github.com/20shaked20/GNSS-Raw-Measuremen
 
 </br>
 
+## Visualization
+### Main Page
+![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/93203695/cc1c93a9-996b-479d-a656-68d1847dbbbd)
+- In this page, you can choose which processing mode you would like to use: online \ offline.
+- You can select constellations to filter.
+- You can see the csv output table of the processed gnss log file.
+- At the upper part of the page, you can navigate to our other pages: Sat view and KML view.
+- The current page is Log File Selector
+
+### Offline Processing mode example
+- When choosing the offline option you will get here:
+![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/93203695/ac03a49d-33e4-4436-add4-fc79f702117e)
+- Now you can choose between the existed log files with "Select a file".
+- After choosing a file and pressing on the processing button, this message will pop-up:
+![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/93203695/3ddf4ea4-af30-4895-881a-a2feb48d9118)
+- Then the processed output will be displayed:
+![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/93203695/7dd05c34-b420-4c05-8ad2-6ccdf9417b6d)
+
+
 ## Testing :mag:
 To test the program, utilize the log files located in the "data" folder. These files were specifically chosen for testing purposes.
 </br></br>
