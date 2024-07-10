@@ -44,7 +44,15 @@ More Information at our [Wiki](https://github.com/20shaked20/GNSS-Raw-Measuremen
 - After choosing a file and pressing on the processing button, this message will pop-up:
 ![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/93203695/3ddf4ea4-af30-4895-881a-a2feb48d9118)
 - Then the processed output will be displayed:
-![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/93203695/7dd05c34-b420-4c05-8ad2-6ccdf9417b6d)
+![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/93203695/af80fd1a-793e-4e6c-aaf1-9111373adad8)
+
+### Sat View Page
+- in this page you can observe the satellites view
+![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/93203695/f3755d62-d8ed-4a23-901e-e9427640eef9)
+
+### KML View Page
+- In this page you can see the calculated location on a map
+![image](https://github.com/20shaked20/GNSS-Raw-Measurements/assets/93203695/b7ef7be2-5851-468a-939f-e868ef8e1c3f)
 
 
 ## Testing :mag:
