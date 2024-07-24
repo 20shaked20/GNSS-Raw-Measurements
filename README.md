@@ -10,6 +10,7 @@ This repository contains code for processing GNSS (Global Navigation Satellite S
 GNSS-Raw-Measurements is a Python-based project for processing and analyzing raw GNSS (Global Navigation Satellite System) data. It includes tools for reading, preprocessing, positioning, spoofing detection, and satellite position calculation. </br></br>
 **Check this -->** [Example video](https://youtu.be/EWFWahptJc0)
 
+
 ## How To Run :joystick:
 See at our wiki page [How To Run](https://github.com/20shaked20/GNSS-Raw-Measurements/wiki/How-To-Run)
 </br></br>
@@ -21,6 +22,7 @@ See at our wiki page [How To Run](https://github.com/20shaked20/GNSS-Raw-Measure
 ### The features that are addition as part of the Final Assignment:
 - **Positioning:** Calculates satellite positions for GLONASS constellations.
 - **Spoofing Detection:** Detects potential spoofing attempts using various algorithms.
+- **Spoofing Correction:** Using Android cellular data to get the real positioning.
 - **Visualization:** Visualizes satellite positions and measurement anomalies, KML viewer and the output CSV - all in web UI. .</br></br>
 
 
