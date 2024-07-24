@@ -20,7 +20,6 @@ See at our wiki page [How To Run](https://github.com/20shaked20/GNSS-Raw-Measure
 - **Data Processing:** Processes raw GNSS measurements from GNSS logs, and creating CSV files which are used to create KML files.
 - **Positioning:** Calculates satellite positions for GPS constellations.
 ### The features that are addition as part of the Final Assignment:
-- **Positioning:** Calculates satellite positions for GLONASS constellations.
 - **Spoofing Detection:** Detects potential spoofing attempts using various algorithms.
 - **Spoofing Correction:** Using Android cellular data to get the real positioning.
 - **Visualization:** Visualizes satellite positions and measurement anomalies, KML viewer and the output CSV - all in web UI. .</br></br>
