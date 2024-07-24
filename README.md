@@ -16,7 +16,7 @@ See at our wiki page [How To Run](https://github.com/20shaked20/GNSS-Raw-Measure
 
 ## Features
 ### The features that are part of Assignment 0:
-- **Data Processing:** Processes raw GNSS measurements from CSV files.
+- **Data Processing:** Processes raw GNSS measurements from GNSS logs, and creating CSV files which are used to create KML files.
 - **Positioning:** Calculates satellite positions for GPS constellations.
 ### The features that are addition as part of the Final Assignment:
 - **Positioning:** Calculates satellite positions for GLONASS constellations.
